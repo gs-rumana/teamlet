@@ -14,7 +14,7 @@ You need Node.js ≥ 22.18 (the version in `.nvmrc` is what CI and the releases 
 ```bash
 pnpm install
 pnpm dev          # API on :4317, UI with hot reload on http://localhost:5173
-pnpm desktop      # the macOS desktop app
+pnpm desktop      # the desktop app
 ```
 
 To keep test sessions out of your real history, give the server its own data folder: `TEAMLET_DATA_DIR=/tmp/teamlet-dev pnpm dev:server`. If you work from inside an AI coding tool, its environment variables (such as `CLAUDE_CONFIG_DIR`) reach the server. Start it with `env -i HOME="$HOME" PATH="$PATH" …` to see what a normal terminal would.
@@ -34,14 +34,14 @@ Then check your change:
 pnpm check        # typecheck, build the UI, run the tests
 ```
 
-The tests in `test/` start the real server and check its security boundary: origin checks, DNS rebinding, sign-in, and the MCP endpoint. If you touch `server/index.ts`, `server/auth.ts`, or `server/mcp.ts`, add a test for the new behavior.
+The tests in `test/` start the real server and check its security boundary: origin checks, DNS rebinding, and the MCP endpoint. If you touch `server/index.ts` or `server/mcp.ts`, add a test for the new behavior. Code that starts the CLIs must work on Windows too: see the notes on `which()` and `launch()` in CLAUDE.md.
 
 ## Pull requests
 
 - Keep each pull request to one change, and explain what it does and why.
 - Add a line under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md) for anything users would notice.
 - For UI changes, include before and after screenshots (light and dark if colors change).
-- CI must pass. It typechecks, builds, and tests on Node 22 and 24, and packages the macOS app and checks that it starts.
+- CI must pass. It typechecks, builds, and tests on Linux, Windows, and macOS, and packages the app on all three and checks that it starts.
 
 ## Releasing
 
@@ -57,6 +57,6 @@ Maintainers publish a release by pushing a version tag:
    git push origin main vx.y.z
    ```
 
-The [release workflow](.github/workflows/release.yml) first checks that the tag matches `package.json` and that `CHANGELOG.md` has a section for the version. It then builds the macOS apps (Apple silicon and Intel) and creates a GitHub release with them and with that changelog section as its notes. A version with a suffix, like `0.3.0-beta.1`, becomes a prerelease.
+The [release workflow](.github/workflows/release.yml) first checks that the tag matches `package.json` and that `CHANGELOG.md` has a section for the version. It then builds installers for macOS (`.dmg`), Windows (`-setup.exe`), and Linux (`.AppImage`), each for arm64 and x64, and creates a GitHub release with them and with that changelog section as its notes. A version with a suffix, like `0.3.0-beta.1`, becomes a prerelease.
 
-The macOS app is signed and notarized when the repository has these secrets: `MAC_CERTIFICATE` (a base64-encoded Developer ID Application `.p12`), `MAC_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`. Without them it's signed ad hoc, and the release notes explain how to open it.
+The macOS app is signed and notarized when the repository has these secrets: `MAC_CERTIFICATE` (a base64-encoded Developer ID Application `.p12`), `MAC_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`. Without them it's signed ad hoc, and the release notes explain how to open it. The Windows installer isn't code-signed.

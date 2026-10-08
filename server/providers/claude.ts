@@ -139,8 +139,8 @@ export class ClaudeProvider implements ProviderAdapter {
     }
   }
 
-  loginArgs({ configDir }: { headless: boolean; configDir?: string }) {
-    // Prints a URL to open and accepts the code back on stdin, so it also works on a server.
+  loginArgs({ configDir }: { configDir?: string }) {
+    // Prints a URL to open and accepts the code back on stdin.
     const binary = which("claude");
     return binary ? { command: binary, args: ["auth", "login", "--claudeai"], env: CONFIG.env(configDir) } : null;
   }

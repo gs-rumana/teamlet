@@ -120,12 +120,9 @@ export interface LoginState {
 
 export interface ServerInfo {
   version: string;
-  /** Reachable only from this machine. */
-  localOnly: boolean;
-  authRequired: boolean;
-  /** The server can open a Terminal window on the machine you're using (local macOS). */
+  /** The server can open a Terminal window to sign in (macOS). */
   canOpenTerminal: boolean;
-  /** The server can show the native macOS folder dialog (local macOS). */
+  /** The server can show the native macOS folder dialog. */
   nativeFolderPicker: boolean;
 }
 

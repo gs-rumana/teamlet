@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Menu, Plus, ShieldAlert } from "lucide-react";
 import type { ProviderId } from "../../shared/protocol.ts";
 import { accountKey, api, useStore } from "./store.ts";
-import { AuthGate } from "./components/AuthGate.tsx";
 import { ConnectDialog } from "./components/ConnectDialog.tsx";
 import { NewTask } from "./components/NewTask.tsx";
 import { SessionView } from "./components/SessionView.tsx";
@@ -76,9 +75,6 @@ export function App() {
   useEffect(() => {
     document.title = session ? `${session.title} · Teamlet` : "Teamlet";
   }, [session]);
-
-  if (store.auth === "checking") return <Splash />;
-  if (store.auth === "signed-out") return <AuthGate />;
 
   const go = (id: string | null) => {
     setSessionId(id);

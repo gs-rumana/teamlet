@@ -3,11 +3,10 @@ import { createWriteStream, mkdirSync, readFileSync, writeFileSync, type WriteSt
 import { createServer, type AddressInfo } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { app, BrowserWindow, dialog, Menu, nativeTheme, screen, session, shell, utilityProcess } from "electron";
-import type { MenuItemConstructorOptions, MessageBoxOptions, Rectangle, UtilityProcess } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, screen, session, shell, utilityProcess } from "electron";
+import type { IpcMainEvent, IpcMainInvokeEvent, MenuItemConstructorOptions, MessageBoxOptions, Rectangle, UtilityProcess } from "electron";
 import type { Snapshot } from "../shared/protocol.ts";
 
-const ROOT = join(import.meta.dirname, "..");
 /**
  * Kept stable so the UI's origin, and with it the theme and recent folders it keeps in
  * localStorage, survives restarts. Not 4317, so `pnpm dev` can run alongside the app.
@@ -71,14 +70,10 @@ function loginShellEnv(): Promise<Record<string, string>> {
   });
 }
 
-/** The desktop server only serves its own window, on this machine. */
 function serverEnv(port: number): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, TEAMLET_HOST: "127.0.0.1", TEAMLET_PORT: String(port) };
-  // Settings for a networked deployment don't apply here. ELECTRON_RUN_AS_NODE would reach
-  // every agent's commands and break any Electron app they start (VS Code's `code`, …).
-  for (const name of ["TEAMLET_PASSWORD", "TEAMLET_AUTH", "TEAMLET_TRUST_PROXY", "TEAMLET_ALLOWED_ORIGINS", "ELECTRON_RUN_AS_NODE"]) {
-    delete env[name];
-  }
+  const env: NodeJS.ProcessEnv = { ...process.env, TEAMLET_PORT: String(port) };
+  // It would reach every agent's commands and break any Electron app they start (VS Code's `code`, …).
+  delete env.ELECTRON_RUN_AS_NODE;
   return env;
 }
 
@@ -99,15 +94,15 @@ function freePort(preferred: number): Promise<number> {
 }
 
 /**
- * Runs the regular server (server/index.ts) in a utility process: Electron's Node strips the
- * types, exactly as `node server/index.ts` does. Resolves with its URL once it answers, or
- * with undefined if it exits first (the exit handler reports that).
+ * Runs the regular server (server/index.ts, through desktop/server.ts) in a utility process:
+ * Electron's Node strips the types, exactly as `node server/index.ts` does. Resolves with its
+ * URL once it answers, or with undefined if it exits first (the exit handler reports that).
  */
 async function startServer(): Promise<string | undefined> {
   const port = await freePort(PREFERRED_PORT);
   const url = `http://127.0.0.1:${port}`;
   serverOutput = "";
-  const child = utilityProcess.fork(join(ROOT, "server/index.ts"), [], {
+  const child = utilityProcess.fork(join(import.meta.dirname, "server.ts"), [], {
     cwd: homedir(),
     env: serverEnv(port),
     stdio: "pipe",
@@ -162,17 +157,20 @@ async function serverFailed(message: string) {
   else app.quit();
 }
 
-/** SIGTERM lets the server stop its agents and save their history (it allows them 5s). */
+/** Lets the server stop its agents and save their history (it allows them 5s), then makes sure it's gone. */
 function stopServer(): Promise<void> {
   const child = server;
   if (!child) return Promise.resolve();
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, 8000);
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve();
+    }, 8000);
     child.once("exit", () => {
       clearTimeout(timer);
       resolve();
     });
-    child.kill();
+    child.postMessage("shutdown");
   });
 }
 
@@ -249,7 +247,9 @@ function showWindow(): BrowserWindow {
     title: "Teamlet",
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#0d0e11" : "#ffffff",
     // The web UI makes room for the traffic lights (see [data-desktop] in styles.css).
-    ...(isMac ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 18, y: 18 } } : {}),
+    ...(isMac ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 18, y: 18 } } : { autoHideMenuBar: true }),
+    // Windows and macOS take the icon from the app bundle; Linux windows need it set.
+    ...(process.platform === "linux" ? { icon: join(import.meta.dirname, "icon.png") } : {}),
     webPreferences: { preload: join(import.meta.dirname, "preload.cjs"), sandbox: true, contextIsolation: true },
   });
   mainWindow = window;
@@ -272,6 +272,25 @@ function showWindow(): BrowserWindow {
   void window.loadURL(serverUrl || LOADING_PAGE);
   return window;
 }
+
+/** IPC from the preload, accepted only from the app's own page. */
+function fromApp(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
+  return Boolean(serverUrl) && event.sender === mainWindow?.webContents && Boolean(event.senderFrame?.url.startsWith(`${serverUrl}/`));
+}
+
+ipcMain.handle("teamlet:pick-folder", async (event, start: unknown) => {
+  if (!fromApp(event) || !mainWindow) return undefined;
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: "Choose a folder for Teamlet to work in",
+    properties: ["openDirectory", "createDirectory"],
+    ...(typeof start === "string" && start ? { defaultPath: start } : {}),
+  });
+  return canceled ? undefined : filePaths[0];
+});
+
+ipcMain.on("teamlet:set-theme", (event, theme: unknown) => {
+  if (fromApp(event) && (theme === "system" || theme === "light" || theme === "dark")) nativeTheme.themeSource = theme;
+});
 
 function newTask() {
   const window = showWindow();
@@ -307,6 +326,9 @@ if (!app.requestSingleInstanceLock()) {
     event.preventDefault();
     void confirmQuit();
   });
+
+  // Groups the app's windows and notifications under its installed shortcut.
+  if (process.platform === "win32") app.setAppUserModelId("dev.teamlet.app");
 
   void app.whenReady().then(async () => {
     app.on("activate", () => showWindow());

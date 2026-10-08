@@ -11,8 +11,8 @@ const MAX_ENTRIES = 1000;
 // macOS asks for permission when an app looks inside these, so don't peek into them just to draw a badge.
 const PRIVACY_PROTECTED = new Set(["Desktop", "Documents", "Downloads", "Library", "Movies", "Music", "Pictures", "Public"]);
 
-/** The native macOS folder dialog only makes sense when the browser is on this Mac. */
-export const nativeFolderPicker = config.localOnly && process.platform === "darwin";
+/** The native macOS folder dialog, opened with AppleScript. */
+export const nativeFolderPicker = process.platform === "darwin";
 
 function fsError(error: unknown, path: string): never {
   const code = (error as NodeJS.ErrnoException).code;
@@ -78,7 +78,7 @@ export function createFolder(parent: string, rawName: string): { path: string } 
 
 /** Opens the macOS "Choose Folder" dialog. Resolves when the user picks or cancels. */
 export function pickFolderNatively(start: string | undefined): Promise<{ path?: string; cancelled?: boolean }> {
-  if (!nativeFolderPicker) throw new HttpError(400, "The Finder picker is only available when Teamlet runs on this Mac.");
+  if (!nativeFolderPicker) throw new HttpError(400, "The Finder picker is only available on macOS.");
   const from = expandHome(start?.trim() || config.defaultCwd);
   const location = isDirectory(from) ? ` default location (POSIX file ${JSON.stringify(from)})` : "";
   const script = [

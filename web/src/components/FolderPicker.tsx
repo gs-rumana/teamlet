@@ -5,15 +5,15 @@ import { recentFolders, rememberFolder } from "../recentFolders.ts";
 import { api, useStore } from "../store.ts";
 import { basename, Button, IconButton } from "./ui.tsx";
 
-/** Breadcrumbs, with the home folder shown as "~". */
+/** Breadcrumbs, with the home folder shown as "~". Windows paths start at their drive ("C:"). */
 function crumbs(path: string, home: string): { label: string; path: string }[] {
-  const underHome = path === home || path.startsWith(`${home}/`);
-  const base = underHome ? home : "";
-  const parts = path.slice(base.length).split("/").filter(Boolean);
-  const out = [{ label: underHome ? "~" : "/", path: underHome ? home : "/" }];
-  let current = base;
-  for (const part of parts) {
-    current = `${current}/${part}`;
+  const sep = path.includes("\\") ? "\\" : "/";
+  const underHome = path === home || path.startsWith(`${home}${sep}`);
+  const out = underHome ? [{ label: "~", path: home }] : sep === "/" ? [{ label: "/", path: "/" }] : [];
+  let current = underHome ? home : "";
+  for (const part of path.slice(underHome ? home.length : 0).split(sep).filter(Boolean)) {
+    if (!current) current = sep === "/" ? `/${part}` : `${part}${sep}`;
+    else current = `${current}${current.endsWith(sep) ? "" : sep}${part}`;
     out.push({ label: part, path: current });
   }
   return out;
@@ -102,12 +102,16 @@ export function FolderPicker({
     }
   };
 
+  // The desktop app uses the system's folder dialog; a browser on a Mac gets Finder's, through the server.
+  const desktop = window.teamletDesktop;
+  const nativePicker = Boolean(desktop) || Boolean(store.server?.nativeFolderPicker);
+  const inFinder = desktop ? desktop.platform === "darwin" : true;
   const pickNatively = async () => {
     setNativeBusy(true);
     setError("");
     try {
-      const result = await api.pickFolderNatively(listing?.path);
-      if (result.path) choose(result.path);
+      const path = desktop ? await desktop.pickFolder(listing?.path) : (await api.pickFolderNatively(listing?.path)).path;
+      if (path) choose(path);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -139,7 +143,7 @@ export function FolderPicker({
         <div className="modal-head">
           <div>
             <h2>Choose a folder</h2>
-            <div className="muted small">{store.server?.localOnly ? "On this computer" : "On the server running Teamlet"}</div>
+            <div className="muted small">On this computer</div>
           </div>
           <IconButton icon={X} label="Close" onClick={onClose} />
         </div>
@@ -173,7 +177,7 @@ export function FolderPicker({
           <nav className="crumbs" aria-label="Current folder">
             {crumbs(listing.path, listing.home).map((crumb, index, all) => (
               <span key={crumb.path} className="crumb">
-                {index > 0 && all[0].label !== "/" ? <span className="crumb-sep">/</span> : index > 1 && <span className="crumb-sep">/</span>}
+                {index > 0 && all[index - 1].label !== "/" && <span className="crumb-sep">{listing.path.includes("\\") ? "\\" : "/"}</span>}
                 <button disabled={index === all.length - 1} onClick={() => void open(crumb.path)}>
                   {crumb.label}
                 </button>
@@ -252,9 +256,9 @@ export function FolderPicker({
           <Button variant="ghost" size="sm" icon={FolderPlus} onClick={() => setCreating(true)} disabled={!listing}>
             New folder
           </Button>
-          {store.server?.nativeFolderPicker && (
+          {nativePicker && (
             <Button variant="ghost" size="sm" onClick={() => void pickNatively()} disabled={nativeBusy}>
-              {nativeBusy ? "Waiting for Finder…" : "Choose in Finder…"}
+              {nativeBusy ? "Waiting for you to choose…" : inFinder ? "Choose in Finder…" : "Browse…"}
             </Button>
           )}
           <span className="grow" />

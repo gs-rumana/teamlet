@@ -1,12 +1,12 @@
 // Boots the real server (server/index.ts) and checks the security boundary from the README:
-// origin and CSRF checks, DNS-rebinding protection, password sign-in, and the MCP endpoint.
+// origin and CSRF checks, DNS-rebinding protection, and the MCP endpoint.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { after, before, describe, test } from "node:test";
 import WebSocket from "ws";
 
@@ -27,15 +27,19 @@ function freePort(): Promise<number> {
  * Runs the server with a throwaway HOME and data folder and a minimal environment, so it
  * never touches the real ~/.teamlet or a signed-in Claude / Codex account.
  */
-function serverEnv(home: string, extra: Record<string, string>): NodeJS.ProcessEnv {
-  return { HOME: home, PATH: `${dirname(process.execPath)}:/usr/bin:/bin`, TEAMLET_DATA_DIR: join(home, "data"), ...extra };
-}
-
-async function startServer(extra: Record<string, string> = {}) {
+async function startServer() {
   const home = mkdtempSync(join(tmpdir(), "teamlet-test-"));
   const port = await freePort();
   const child = spawn(process.execPath, [join(ROOT, "server/index.ts")], {
-    env: serverEnv(home, { TEAMLET_PORT: String(port), ...extra }),
+    env: {
+      HOME: home,
+      USERPROFILE: home,
+      PATH: [dirname(process.execPath), ...(process.platform === "win32" ? [] : ["/usr/bin", "/bin"])].join(delimiter),
+      // Windows can't start processes without it.
+      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
+      TEAMLET_DATA_DIR: join(home, "data"),
+      TEAMLET_PORT: String(port),
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
@@ -57,7 +61,7 @@ async function startServer(extra: Record<string, string> = {}) {
       const exited = new Promise((resolve) => child.once("exit", resolve));
       child.kill("SIGTERM");
       await exited;
-      rmSync(home, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true, maxRetries: 5 });
     },
   };
 }
@@ -109,7 +113,7 @@ function openSocket(server: Server, headers: Record<string, string>): Promise<{ 
   });
 }
 
-describe("local server without a password", () => {
+describe("server", () => {
   let server: Server;
   before(async () => {
     server = await startServer();
@@ -145,9 +149,9 @@ describe("local server without a password", () => {
 
   test("streams state over the WebSocket to its own pages only", async () => {
     assert.equal((await openSocket(server, { origin: server.url })).type, "snapshot");
-    await assert.rejects(openSocket(server, { origin: "https://evil.example" }), /HTTP 401/);
+    await assert.rejects(openSocket(server, { origin: "https://evil.example" }), /HTTP 403/);
     const host = `evil.example:${server.port}`;
-    await assert.rejects(openSocket(server, { host, origin: `http://${host}` }), /HTTP 401/);
+    await assert.rejects(openSocket(server, { host, origin: `http://${host}` }), /HTTP 403/);
   });
 
   test("never serves files from outside dist/", async () => {
@@ -160,68 +164,7 @@ describe("local server without a password", () => {
     assert.equal((await post(server, "/api/fs/mkdir", { parent: "/tmp", name: "../escape" })).status, 400);
   });
 
-  test("hides the MCP endpoint from unknown tokens and proxied requests", async () => {
+  test("hides the MCP endpoint from unknown tokens", async () => {
     assert.equal((await fetch(`${server.url}/mcp/abc123`, { method: "POST" })).status, 404);
-    const proxied = await fetch(`${server.url}/mcp/abc123`, { method: "POST", headers: { "x-forwarded-for": "203.0.113.7" } });
-    assert.equal(proxied.status, 403);
-  });
-});
-
-describe("server with a password", () => {
-  const password = "correct horse battery staple";
-  let server: Server;
-  before(async () => {
-    server = await startServer({ TEAMLET_PASSWORD: password });
-  });
-  after(() => server.stop());
-
-  test("requires signing in", async () => {
-    const status = (await (await fetch(`${server.url}/api/auth`)).json()) as { required: boolean; authenticated: boolean };
-    assert.deepEqual(status, { required: true, authenticated: false });
-    assert.equal((await fetch(`${server.url}/api/state`)).status, 401);
-    await assert.rejects(openSocket(server, { origin: server.url }), /HTTP 401/);
-  });
-
-  test("signs in with the password and issues a strict, HttpOnly cookie", async () => {
-    const response = await post(server, "/api/auth/login", { password });
-    assert.equal(response.status, 200);
-    const cookie = response.headers.get("set-cookie") ?? "";
-    assert.match(cookie, /HttpOnly/);
-    assert.match(cookie, /SameSite=Strict/);
-    const session = cookie.split(";")[0];
-    assert.equal((await fetch(`${server.url}/api/state`, { headers: { cookie: session } })).status, 200);
-    assert.equal((await openSocket(server, { origin: server.url, cookie: session })).type, "snapshot");
-
-    const forged = session.replace(/.$/, (last) => (last === "A" ? "B" : "A"));
-    assert.equal((await fetch(`${server.url}/api/state`, { headers: { cookie: forged } })).status, 401);
-  });
-
-  // Runs last: it locks this client out for a minute.
-  test("locks a client out after repeated wrong passwords", async () => {
-    for (let attempt = 0; attempt < 5; attempt++) {
-      assert.equal((await post(server, "/api/auth/login", { password: "wrong" })).status, 401);
-    }
-    const locked = await post(server, "/api/auth/login", { password });
-    assert.equal(locked.status, 401);
-    assert.match(((await locked.json()) as { error: string }).error, /Too many attempts/);
-  });
-});
-
-describe("startup safety", () => {
-  test("refuses to listen beyond this machine without a password", async () => {
-    const home = mkdtempSync(join(tmpdir(), "teamlet-test-"));
-    try {
-      const child = spawn(process.execPath, [join(ROOT, "server/index.ts")], {
-        env: serverEnv(home, { TEAMLET_HOST: "0.0.0.0", TEAMLET_PORT: String(await freePort()) }),
-        stdio: ["ignore", "ignore", "pipe"],
-      });
-      let stderr = "";
-      child.stderr.on("data", (chunk: Buffer) => (stderr += chunk));
-      const code = await new Promise((resolve) => child.once("exit", resolve));
-      assert.equal(code, 1);
-      assert.match(stderr, /Refusing to listen/);
-    } finally {
-      rmSync(home, { recursive: true, force: true });
-    }
   });
 });

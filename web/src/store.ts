@@ -13,8 +13,6 @@ import type {
   Session,
 } from "../../shared/protocol.ts";
 
-export type AuthState = "checking" | "signed-out" | "signed-in";
-
 /** Key for per-account state: a provider plus, for Claude, a config folder. */
 export const accountKey = (provider: ProviderId, configDir?: string) => `${provider}:${configDir ?? ""}`;
 
@@ -30,7 +28,6 @@ class ClientStore {
   defaultCwd = "";
   maxParallel = 0;
   server: ServerInfo | null = null;
-  auth: AuthState = "checking";
   connected = false;
   loaded = false;
 
@@ -54,27 +51,9 @@ class ClientStore {
     });
   }
 
-  async start() {
-    try {
-      const response = await fetch("/api/auth");
-      const status = (await response.json()) as { required: boolean; authenticated: boolean };
-      this.setAuth(status.required && !status.authenticated ? "signed-out" : "signed-in");
-    } catch {
-      // Server unreachable: keep trying.
-      setTimeout(() => void this.start(), 1500);
-    }
-  }
-
-  setAuth(auth: AuthState) {
-    this.auth = auth;
-    if (auth === "signed-in") this.connect();
-    else this.socket?.close();
-    this.changed();
-  }
-
-  private connect() {
+  connect() {
     if (this.socket && this.socket.readyState <= WebSocket.OPEN) return;
-    const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
+    const ws = new WebSocket(`ws://${location.host}/ws`);
     this.socket = ws;
     ws.onopen = () => {
       this.connected = true;
@@ -85,8 +64,8 @@ class ClientStore {
       this.socket = null;
       this.connected = false;
       this.changed();
-      // Re-check auth (the session may have expired) before reconnecting.
-      if (this.auth === "signed-in") setTimeout(() => void this.start(), 1000);
+      // The server restarted or isn't up yet: keep trying.
+      setTimeout(() => this.connect(), 1000);
     };
   }
 
@@ -155,7 +134,7 @@ class ClientStore {
 }
 
 export const store = new ClientStore();
-void store.start();
+store.connect();
 
 export function useStore() {
   useSyncExternalStore(store.subscribe, store.getVersion);
@@ -169,20 +148,11 @@ async function call<T = unknown>(method: string, path: string, body?: unknown): 
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = (await response.json().catch(() => ({}))) as { error?: string };
-  if (response.status === 401 && !path.startsWith("/api/auth")) store.setAuth("signed-out");
   if (!response.ok) throw new Error(data.error ?? `Request failed (${response.status})`);
   return data as T;
 }
 
 export const api = {
-  login: async (password: string) => {
-    await call("POST", "/api/auth/login", { password });
-    store.setAuth("signed-in");
-  },
-  logout: async () => {
-    await call("POST", "/api/auth/logout");
-    store.setAuth("signed-out");
-  },
   createSession: (request: CreateSessionRequest) => call<Session>("POST", "/api/sessions", request),
   stopSession: (id: string) => call("POST", `/api/sessions/${id}/stop`),
   deleteSession: (id: string) => call("DELETE", `/api/sessions/${id}`),

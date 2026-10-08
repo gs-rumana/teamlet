@@ -35,7 +35,9 @@ body:
     attributes:
       label: How do you run Teamlet?
       options:
-        - Desktop app (macOS)
+        - Desktop app on macOS
+        - Desktop app on Windows
+        - Desktop app on Linux
         - pnpm start
         - pnpm dev
     validations:
@@ -50,5 +52,5 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: Server output (the desktop app keeps it in ~/Library/Logs/Teamlet/server.log). Remove anything private first.
+      description: From Help → Show Server Log in the app. Remove anything private first.
       render: text

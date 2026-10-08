@@ -8,6 +8,7 @@ function apply(preference: ThemePreference) {
   const dark = preference === "dark" || (preference === "system" && query.matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#111216" : "#f8f8f9");
+  window.teamletDesktop?.setTheme(preference);
 }
 
 const initial = (localStorage.getItem("teamlet.theme") as ThemePreference | null) ?? "system";

@@ -41,7 +41,7 @@ function useRelativePath() {
   const { cwd } = useSession();
   return (path: string) => {
     for (const root of [cwd, `/private${cwd}`]) {
-      if (root && path.startsWith(`${root}/`)) return path.slice(root.length + 1);
+      if (root && (path.startsWith(`${root}/`) || path.startsWith(`${root}\\`))) return path.slice(root.length + 1);
     }
     return path;
   };

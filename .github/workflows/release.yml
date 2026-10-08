@@ -47,15 +47,19 @@ jobs:
       - run: pnpm check
 
   desktop:
-    name: Desktop app (macOS)
+    name: Desktop app (${{ matrix.os }})
     needs: verify
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - { os: macos-latest, args: "--mac dmg", files: "release/*.dmg" }
+          - { os: windows-latest, args: "--win nsis", files: "release/*.exe" }
+          - { os: ubuntu-latest, args: "--linux AppImage", files: "release/*.AppImage" }
     permissions:
       contents: read
       id-token: write
       attestations: write
-    outputs:
-      signed: ${{ steps.package.outputs.signed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -67,34 +71,31 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - id: package
-        name: Package
+      - name: Package (Apple silicon and Intel, or x64 and arm64)
+        shell: bash
         env:
-          # Optional repository secrets. With MAC_CERTIFICATE (a base64 Developer ID .p12) the app is
-          # signed; with the APPLE_* ones too it's notarized. Without them it's signed ad hoc.
-          CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ARGS: ${{ matrix.args }}
+          # Optional repository secrets for macOS. With MAC_CERTIFICATE (a base64 Developer ID .p12)
+          # the app is signed; with the APPLE_* ones too it's notarized. Without them it's signed ad hoc.
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CERTIFICATE || '' }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CERTIFICATE_PASSWORD || '' }}
+          APPLE_ID: ${{ runner.os == 'macOS' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ runner.os == 'macOS' && secrets.APPLE_TEAM_ID || '' }}
         run: |
           for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
             [ -n "${!name}" ] || unset "$name"
           done
-          if [ -n "${CSC_LINK:-}" ]; then
-            echo "signed=true" >> "$GITHUB_OUTPUT"
-          else
-            export CSC_IDENTITY_AUTO_DISCOVERY=false
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-          fi
-          pnpm exec electron-builder --mac dmg --arm64 --x64 --publish never
+          [ -n "${CSC_LINK:-}" ] || export CSC_IDENTITY_AUTO_DISCOVERY=false
+          # shellcheck disable=SC2086
+          pnpm exec electron-builder $ARGS --x64 --arm64 --publish never
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: release/*.dmg
+          subject-path: ${{ matrix.files }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: desktop
-          path: release/*.dmg
+          name: desktop-${{ runner.os }}
+          path: ${{ matrix.files }}
           if-no-files-found: error
 
   release:
@@ -109,14 +110,15 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: desktop
+          pattern: desktop-*
+          merge-multiple: true
           path: artifacts
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.verify.outputs.version }}
           PRERELEASE: ${{ needs.verify.outputs.prerelease }}
-          SIGNED: ${{ needs.desktop.outputs.signed }}
+          MAC_SIGNED: ${{ secrets.MAC_CERTIFICATE != '' }}
         run: |
           # This version's CHANGELOG.md section, without its heading or the link definitions at the end.
           awk -v heading="## [$VERSION]" '
@@ -124,17 +126,25 @@ jobs:
             /^\[[^]]+\]: / { if (found) exit }
             found
           ' CHANGELOG.md > notes.md
-          {
-            echo
-            echo "### Install"
-            echo
-            echo "Download \`Teamlet-$VERSION-arm64.dmg\` (Apple silicon) or \`Teamlet-$VERSION-x64.dmg\` (Intel) below."
-            if [ "$SIGNED" != true ]; then
-              echo
-              echo "This build isn't notarized: after copying it to Applications, run \`xattr -dr com.apple.quarantine /Applications/Teamlet.app\` once."
-            fi
-          } >> notes.md
+          cat >> notes.md <<EOF
+
+          ### Install
+
+          | | Apple silicon / ARM | Intel / AMD |
+          | --- | --- | --- |
+          | **macOS** | \`Teamlet-$VERSION-arm64.dmg\` | \`Teamlet-$VERSION-x64.dmg\` |
+          | **Windows** | \`Teamlet-$VERSION-arm64-setup.exe\` | \`Teamlet-$VERSION-x64-setup.exe\` |
+          | **Linux** | \`Teamlet-$VERSION-arm64.AppImage\` | \`Teamlet-$VERSION-x64.AppImage\` |
+
+          The apps need the \`claude\` and/or \`codex\` CLI installed and signed in; see the [README](https://github.com/$GITHUB_REPOSITORY#readme).
+
+          - **Windows**: the installer isn't code-signed yet, so SmartScreen may warn. Choose **More info → Run anyway**.
+          - **Linux**: \`chmod +x\` the AppImage, then run it. It needs FUSE 2 (\`libfuse2\`, or \`libfuse2t64\` on Ubuntu 24.04).
+          EOF
+          if [ "$MAC_SIGNED" != true ]; then
+            echo "- **macOS**: this build isn't notarized. After copying it to Applications, run \`xattr -dr com.apple.quarantine /Applications/Teamlet.app\` once." >> notes.md
+          fi
           flags=()
           [ "$PRERELEASE" = true ] && flags+=(--prerelease)
-          gh release create "$GITHUB_REF_NAME" artifacts/*.dmg \
+          gh release create "$GITHUB_REF_NAME" artifacts/* \
             --repo "$GITHUB_REPOSITORY" --verify-tag --title "Teamlet $VERSION" --notes-file notes.md "${flags[@]}"

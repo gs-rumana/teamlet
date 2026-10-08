@@ -3,8 +3,7 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { WebSocketServer } from "ws";
 import type { CreateSessionRequest, PermissionLevel, ProviderId, ServerEvent, ServerInfo } from "../shared/protocol.ts";
-import { assertSafeConfig, config } from "./config.ts";
-import { isAuthenticated, login, logoutCookie } from "./auth.ts";
+import { config } from "./config.ts";
 import { HttpError, Orchestrator } from "./orchestrator.ts";
 import { handleMcpRequest } from "./mcp.ts";
 import { canOpenTerminal, LoginManager } from "./login.ts";
@@ -15,15 +14,11 @@ import { CodexProvider } from "./providers/codex.ts";
 import type { ProviderAdapter } from "./providers/types.ts";
 import { expandHome } from "./util.ts";
 
-assertSafeConfig();
-
 const DIST_DIR = resolve(import.meta.dirname, "../dist");
 const VERSION = config.version;
 
 const serverInfo: ServerInfo = {
   version: VERSION,
-  localOnly: config.localOnly,
-  authRequired: config.authRequired,
   canOpenTerminal,
   nativeFolderPicker,
 };
@@ -60,34 +55,18 @@ const LOOPBACK_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
 
 /**
- * Without a password, a local server would trust any page served from its own origin. A
- * DNS-rebinding page points its own name at 127.0.0.1 and sends that name as both Host and
- * Origin, so a local server only answers requests addressed to a loopback name.
+ * Any web page can send requests to 127.0.0.1. A DNS-rebinding page points its own name at
+ * 127.0.0.1 and sends that name as both Host and Origin, so only answer requests addressed
+ * to a loopback name.
  */
 function isAllowedHost(req: IncomingMessage): boolean {
-  if (!config.localOnly) return true;
-  const host = req.headers.host ?? "";
-  return LOOPBACK_HOST.test(host) || config.allowedOrigins.some((origin) => URL.canParse(origin) && new URL(origin).host === host);
+  return LOOPBACK_HOST.test(req.headers.host ?? "");
 }
 
 /** Only the app's own pages may call the API; other websites must not drive agents. */
 function isAllowedOrigin(req: IncomingMessage): boolean {
   const origin = req.headers.origin;
-  if (!origin) return true;
-  if (LOOPBACK_ORIGIN.test(origin) || config.allowedOrigins.includes(origin)) return true;
-  try {
-    const host = (config.trustProxy && req.headers["x-forwarded-host"]) || req.headers.host;
-    return new URL(origin).host === host;
-  } catch {
-    return false;
-  }
-}
-
-/** The MCP endpoint is for agent CLIs on this machine only, never for proxied traffic. */
-function isDirectLoopback(req: IncomingMessage): boolean {
-  const address = req.socket.remoteAddress ?? "";
-  const loopback = address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
-  return loopback && !req.headers["x-forwarded-for"];
+  return !origin || LOOPBACK_ORIGIN.test(origin);
 }
 
 async function readJson<T>(req: IncomingMessage): Promise<T> {
@@ -106,8 +85,8 @@ async function readJson<T>(req: IncomingMessage): Promise<T> {
   }
 }
 
-function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
-  res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", ...headers }).end(JSON.stringify(body));
+function send(res: ServerResponse, status: number, body: unknown) {
+  res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify(body));
 }
 
 /** Body of the sign-in routes; `configDir` picks the account and must be one the provider lists. */
@@ -235,39 +214,20 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
   try {
     if (!isAllowedHost(req)) {
-      return send(res, 403, { error: "Unknown host. Open Teamlet at http://localhost, or add this address to TEAMLET_ALLOWED_ORIGINS." });
+      return send(res, 403, { error: "Unknown host. Open Teamlet at http://localhost." });
     }
     if (url.pathname === "/healthz") {
       return send(res, 200, { ok: true, version: VERSION, providers: [...new Set(orchestrator.availableProviders().map((p) => p.id))] });
     }
 
     const mcpMatch = url.pathname.match(/^\/mcp\/([a-f0-9]+)$/);
-    if (mcpMatch) {
-      if (!isDirectLoopback(req)) return send(res, 403, { error: "Forbidden" });
-      return await handleMcpRequest(orchestrator, mcpMatch[1], req, res);
-    }
+    if (mcpMatch) return await handleMcpRequest(orchestrator, mcpMatch[1], req, res);
 
     if (url.pathname.startsWith("/api/")) {
       // A custom header forces a CORS preflight, which this server never approves for other sites.
       if (!isAllowedOrigin(req) || (req.method !== "GET" && req.headers["x-teamlet"] !== "1")) {
         return send(res, 403, { error: "Forbidden" });
       }
-      if (url.pathname === "/api/auth" && req.method === "GET") {
-        return send(res, 200, { required: config.authRequired, authenticated: isAuthenticated(req) });
-      }
-      if (url.pathname === "/api/auth/login" && req.method === "POST") {
-        const { password } = await readJson<{ password?: string }>(req);
-        try {
-          return send(res, 200, { ok: true }, { "set-cookie": login(req, password ?? "") });
-        } catch (error) {
-          return send(res, 401, { error: (error as Error).message });
-        }
-      }
-      if (url.pathname === "/api/auth/logout" && req.method === "POST") {
-        return send(res, 200, { ok: true }, { "set-cookie": logoutCookie(req) });
-      }
-      if (!isAuthenticated(req)) return send(res, 401, { error: "Sign in required" });
-
       for (const [method, pattern, handler] of routes) {
         const match = url.pathname.match(pattern);
         if (match && req.method === method) return send(res, 200, (await handler(req, match.slice(1))) ?? { ok: true });
@@ -283,8 +243,8 @@ const server = createServer(async (req, res) => {
 });
 
 server.on("upgrade", (req, socket, head) => {
-  if (req.url !== "/ws" || !isAllowedHost(req) || !isAllowedOrigin(req) || !isAuthenticated(req)) {
-    socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+  if (req.url !== "/ws" || !isAllowedHost(req) || !isAllowedOrigin(req)) {
+    socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
     return socket.destroy();
   }
   wss.handleUpgrade(req, socket, head, (ws) => ws.send(JSON.stringify(snapshot())));
@@ -306,8 +266,7 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 await orchestrator.refreshProviders();
 server.listen(config.port, config.host, () => {
-  const shownHost = config.host === "0.0.0.0" || config.host === "::" ? "localhost" : config.host;
-  console.log(`Teamlet ${VERSION} listening on http://${shownHost}:${config.port}${config.authRequired ? " (password required)" : ""}`);
+  console.log(`Teamlet ${VERSION} listening on http://${config.host}:${config.port}`);
   for (const p of orchestrator.snapshot().providers) {
     const state = p.installed ? (p.loggedIn ? `signed in${p.plan ? ` (${p.plan})` : ""}` : "not signed in") : "not installed";
     console.log(`  ${p.name.padEnd(7)} ${state}${p.isDefaultConfigDir === false ? ` · ${p.configDir}` : ""}`);

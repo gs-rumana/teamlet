@@ -15,13 +15,17 @@ concurrency:
 
 jobs:
   check:
-    name: Check (Node ${{ matrix.node }})
-    runs-on: ubuntu-latest
+    name: Check (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # The oldest supported Node (package.json engines) and the one the desktop app and releases use.
-        node: ["22.18", "24"]
+        include:
+          # The oldest supported Node (package.json engines), then the one releases ship with.
+          - { os: ubuntu-latest, node: "22.18" }
+          - { os: ubuntu-latest, node: "24" }
+          - { os: windows-latest, node: "24" }
+          - { os: macos-latest, node: "24" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,12 +38,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm build
-      # Boots the server and checks origin/CSRF rules, DNS-rebinding protection and sign-in.
+      # Boots the server and checks origin/CSRF rules and DNS-rebinding protection.
       - run: pnpm test
 
   desktop:
-    name: Desktop app (macOS)
-    runs-on: macos-latest
+    name: Desktop app (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -56,14 +64,19 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - name: Packaged app starts its server
+        shell: bash
         run: |
-          app=$(ls -d release/mac*/Teamlet.app | head -1)
-          TEAMLET_DATA_DIR="$RUNNER_TEMP/teamlet" "$app/Contents/MacOS/Teamlet" > "$RUNNER_TEMP/app.log" 2>&1 &
-          pid=$!
+          case "$RUNNER_OS" in
+            macOS) app=(release/mac*/Teamlet.app/Contents/MacOS/Teamlet) ;;
+            Windows) app=(release/win-unpacked/Teamlet.exe) ;;
+            # No display on Linux runners; the unpacked app's sandbox helper isn't set up either.
+            Linux) app=(xvfb-run --auto-servernum release/linux-unpacked/teamlet --no-sandbox) ;;
+          esac
+          TEAMLET_DATA_DIR="$RUNNER_TEMP/teamlet" "${app[@]}" > "$RUNNER_TEMP/app.log" 2>&1 &
           for i in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:4327/healthz; then kill "$pid"; exit 0; fi
+            if curl -sf http://127.0.0.1:4327/healthz; then exit 0; fi
             sleep 1
           done
-          cat "$RUNNER_TEMP/app.log" ~/Library/Logs/Teamlet/server.log || true
+          cat "$RUNNER_TEMP/app.log" || true
+          cat ~/Library/Logs/Teamlet/server.log "$APPDATA/Teamlet/logs/server.log" ~/.config/Teamlet/logs/server.log 2>/dev/null || true
           exit 1
-

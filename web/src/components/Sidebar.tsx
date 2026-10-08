@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { LogOut, Monitor, Moon, Plus, Search, Sun, X } from "lucide-react";
+import { Monitor, Moon, Plus, Search, Sun, X } from "lucide-react";
 import { TeamletMark } from "./Logo.tsx";
 import type { Agent, ProviderId, Session } from "../../../shared/protocol.ts";
-import { accountKey, api, useStore } from "../store.ts";
+import { accountKey, useStore } from "../store.ts";
 import { useTheme, type ThemePreference } from "../theme.ts";
 import { accountLabel, IconButton, isActive, relativeTime, StatusDot, useNow } from "./ui.tsx";
 
@@ -114,9 +114,8 @@ export function Sidebar({
             ))}
           </div>
           <span className="version">{store.server ? `v${store.server.version}` : ""}</span>
-          {store.server?.authRequired && <IconButton icon={LogOut} label="Sign out" onClick={() => void api.logout()} />}
         </div>
-        {!store.connected && store.auth === "signed-in" && <div className="offline">Reconnecting…</div>}
+        {!store.connected && store.loaded && <div className="offline">Reconnecting…</div>}
       </div>
     </nav>
   );

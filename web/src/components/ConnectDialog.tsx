@@ -14,7 +14,7 @@ function Command({ command }: { command: string }) {
   );
 }
 
-const parentFolder = (path: string) => path.slice(0, path.lastIndexOf("/")) || "/";
+const parentFolder = (path: string) => path.slice(0, Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"))) || "/";
 
 /** The variable each CLI reads its config folder from. */
 const CONFIG_DIR_VARIABLE: Record<ProviderId, string> = { claude: "CLAUDE_CONFIG_DIR", codex: "CODEX_HOME" };
@@ -31,7 +31,6 @@ export function ConnectDialog({ providerId, configDir, onClose }: { providerId: 
   const [showOutput, setShowOutput] = useState(false);
   const [picking, setPicking] = useState(false);
   const [adding, setAdding] = useState(false);
-  const remote = store.server ? !store.server.localOnly : false;
 
   useEffect(() => {
     // The folder picker closes itself on Escape; don't close this dialog with it.
@@ -221,14 +220,8 @@ export function ConnectDialog({ providerId, configDir, onClose }: { providerId: 
 
               <details className="manual">
                 <summary>Other ways to sign in</summary>
-                <p className="muted small">Run this in a terminal on the machine running Teamlet, then click Refresh:</p>
+                <p className="muted small">Run this in a terminal, then click Refresh:</p>
                 <Command command={provider.loginCommand} />
-                {provider.id === "claude" && remote && (
-                  <p className="muted small">
-                    On a server you can also run <code>claude setup-token</code> on your own computer and set the token it prints as{" "}
-                    <code>CLAUDE_CODE_OAUTH_TOKEN</code> in the server's environment.
-                  </p>
-                )}
               </details>
 
               {provider.configDir && (

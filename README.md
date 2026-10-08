@@ -6,7 +6,7 @@
 [![Latest release](https://img.shields.io/github/v/release/gs-rumana/teamlet?sort=semver)](https://github.com/gs-rumana/teamlet/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Use the AI subscriptions you already pay for (Claude Pro/Max, ChatGPT Plus/Pro) as a team. You give a task to a **lead agent**. It splits the work, starts **worker agents that run in parallel**, collects their reports, checks how the pieces fit together, and summarizes.
+A desktop app for macOS, Windows, and Linux that puts the AI subscriptions you already pay for (Claude Pro/Max, ChatGPT Plus/Pro) to work as a team. You give a task to a **lead agent**. It splits the work, starts **worker agents that run in parallel**, collects their reports, checks how the pieces fit together, and summarizes.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
@@ -17,108 +17,78 @@ The design follows [t3code](https://github.com/pingdotgg/t3code). Teamlet doesn'
 
 ## Get started
 
-Teamlet needs at least one provider CLI, installed and signed in on the machine it runs on:
+### 1. Install a provider CLI
+
+Teamlet drives the official command-line tools, so install at least one and sign in:
 
 - **Claude**: `npm i -g @anthropic-ai/claude-code`, then `claude auth login --claudeai`
 - **Codex**: `npm i -g @openai/codex`, then `codex login` ("Sign in with ChatGPT")
 
 You can also sign in from the app: click a provider under **Subscriptions** in the sidebar.
 
-### Download the desktop app (macOS)
+### 2. Install Teamlet
 
-Download `Teamlet-<version>-arm64.dmg` (Apple silicon) or `-x64.dmg` (Intel) from the [latest release](https://github.com/gs-rumana/teamlet/releases/latest) and drag Teamlet to Applications. If the release notes say the build isn't notarized, run this once before opening it, or macOS will refuse to open it:
+Download the installer for your computer from the [latest release](https://github.com/gs-rumana/teamlet/releases/latest). Each one comes for Apple silicon/ARM (`arm64`) and Intel/AMD (`x64`).
 
-```bash
-xattr -dr com.apple.quarantine /Applications/Teamlet.app
-```
-
-### From source
-
-Requirements: Node.js ≥ 22.18 and pnpm.
-
-```bash
-pnpm install
-pnpm dev                    # API on :4317, UI with hot reload on http://localhost:5173
-# or, production build:
-pnpm build && pnpm start    # everything on http://localhost:4317
-```
-
-Locally the server only listens on `127.0.0.1`, so no password is needed. To run it on a server instead, see [Deploy](#deploy-self-hosted).
+- **macOS**: open `Teamlet-<version>-<arch>.dmg` and drag Teamlet to Applications. If the release notes say the build isn't notarized, run `xattr -dr com.apple.quarantine /Applications/Teamlet.app` once before opening it, or macOS will refuse to open it.
+- **Windows**: run `Teamlet-<version>-<arch>-setup.exe`. The installer isn't code-signed yet, so SmartScreen may warn; choose **More info → Run anyway**.
+- **Linux**: make `Teamlet-<version>-<arch>.AppImage` executable (`chmod +x`) and run it. It needs FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04). If it doesn't open on Ubuntu 23.10 or later, start it with `--no-sandbox`.
 
 ### Several accounts
 
 Each CLI keeps its sign-in in a config folder. Claude Code uses `~/.claude` (or `CLAUDE_CONFIG_DIR`), and Codex uses `~/.codex` (or `CODEX_HOME`). To use another account, open the provider under **Subscriptions**, click **Add another account**, and choose its folder (for example `~/.claude-work`). For a brand-new account, create an empty folder in the picker and then sign in. A new Codex folder starts without your `config.toml`, so copy it over if you want the same settings. When a provider has more than one account, the new-task form shows an **Account** picker. The lead and its workers on the same provider all run on the account you pick, and follow-up messages stay on it. Teamlet saves the list in `settings.json` in its data folder.
 
-## The desktop app
+## Using the app
 
-The desktop app is the same app in its own window, without a terminal or a browser tab. To build it from source:
+- Teamlet runs a small server inside the app, on `127.0.0.1` only (port 4327 when it's free), so nothing outside your computer can reach it. Quitting stops it; if agents are still working, the app asks first.
+- History is kept in `~/.teamlet` (or `TEAMLET_DATA_DIR`).
+- On macOS and Linux the app reads `PATH` and the rest of your login shell's environment at startup, so agents find `node`, `git`, and the provider CLIs just as they would in a terminal. On Windows it uses your user environment.
+- If something goes wrong, **Help → Show Server Log** opens the server's output. It's in `~/Library/Logs/Teamlet` on macOS, `%APPDATA%\Teamlet\logs` on Windows, and `~/.config/Teamlet/logs` on Linux.
+
+### Access levels
+
+Each session has an access level, which you can change from the session header at any time:
+
+- **Read only**: agents can read and search files, nothing else.
+- **Edit files**: agents can change files in the session's folder. Claude asks you before running commands; Codex runs them in its `workspace-write` sandbox.
+- **Full access**: no approvals and no sandbox.
+
+A new level applies to every turn that starts afterwards. Claude agents that are working switch immediately; a working Codex agent keeps its level until its turn ends.
+
+## Run from source
+
+Requirements: Node.js ≥ 22.18 and pnpm.
 
 ```bash
-pnpm desktop                # build the UI and open the app (for development)
-pnpm desktop:dist           # package release/Teamlet-<version>-<arch>.dmg
+pnpm install
+pnpm desktop                # build the UI and open the desktop app
+pnpm dev                    # or work in the browser: UI with hot reload on http://localhost:5173
+pnpm build && pnpm start    # or the built UI in the browser, on http://localhost:4317
+pnpm desktop:dist           # package an installer for this OS into release/
 ```
 
-It starts its own server on `127.0.0.1` (port 4327 when it's free, so `pnpm dev` can run alongside) and stops it when you quit. If agents are still working, it asks first. It keeps history in the same data folder as `pnpm start` (`~/.teamlet`, or `TEAMLET_DATA_DIR`), so don't run both against one folder at the same time. When you open it from Finder or the Dock, it reads `PATH` and the rest of your login shell's environment, so agents find `node`, `git`, and the provider CLIs just as they would in a terminal. The server's output goes to `~/Library/Logs/Teamlet/server.log` (**Help → Show Server Log**).
+`desktop:dist` builds a `.dmg`, a `-setup.exe`, or an `.AppImage`, depending on the OS it runs on. On macOS it signs with a certificate from your keychain if it finds one, and otherwise signs ad hoc, which is enough to run it on the Mac that built it.
 
-`desktop:dist` signs the app with a certificate from your keychain if it finds one. Otherwise it signs ad hoc, which is enough to run it on the Mac that built it. To share the app with others, sign it with a Developer ID and notarize it ([electron-builder docs](https://www.electron.build/docs/mac)).
-
-## Deploy (self-hosted)
-
-Teamlet is a **single-user app you run for yourself**: on a home server, a VPS, or a dev box you reach over Tailscale. Agents run commands on the machine it's deployed to, so treat access to it like SSH access.
-
-Any host with Node ≥ 22.18 and the provider CLIs works:
-
-```bash
-pnpm install --frozen-lockfile && pnpm build
-TEAMLET_HOST=0.0.0.0 TEAMLET_PASSWORD=… pnpm start
-```
-
-Use `TEAMLET_HOST=0.0.0.0` (all interfaces) rather than one specific IP. Agents reach the delegation tools over `127.0.0.1`. Run it under a process manager such as systemd to keep it up; it stops agents cleanly and saves history on `SIGTERM`, and answers health checks at `/healthz`.
-
-Open `http://<server>:4317`, sign in with the password, then connect Claude and/or Codex from the sidebar:
-
-- **Codex** signs in with a device code: open the link shown and enter the code.
-- **Claude** shows a sign-in link; paste the code it gives you back into the dialog. Or run `claude setup-token` on your own computer and set `CLAUDE_CODE_OAUTH_TOKEN` in the server's environment.
-
-### HTTPS
-
-Put a TLS-terminating proxy in front and set `TEAMLET_TRUST_PROXY=1`. Example with Caddy:
-
-```
-teamlet.example.com {
-  reverse_proxy localhost:4317
-}
-```
-
-WebSockets (`/ws`) pass through without extra configuration. Session cookies are marked `Secure` automatically when the proxy reports HTTPS.
-
-### Configuration
+These environment variables change the defaults:
 
 | Variable | Default | |
 | --- | --- | --- |
-| `TEAMLET_PASSWORD` | – | Required whenever the host isn't `127.0.0.1`/`localhost` (the server refuses to start otherwise) |
-| `TEAMLET_HOST` | `127.0.0.1` | Interface to listen on (`0.0.0.0` for all) |
-| `TEAMLET_PORT` / `PORT` | `4317` | |
-| `TEAMLET_DATA_DIR` | `~/.teamlet` | Session history, settings, and signing secret |
+| `TEAMLET_DATA_DIR` | `~/.teamlet` | Session history and settings |
 | `TEAMLET_DEFAULT_CWD` | home folder | Default working folder in the UI |
 | `TEAMLET_MAX_PARALLEL` | `6` | Max workers running at once; extra workers queue |
-| `TEAMLET_TRUST_PROXY` | off | Trust `X-Forwarded-*` headers. Set this only behind a reverse proxy |
-| `TEAMLET_ALLOWED_ORIGINS` | – | Extra browser origins allowed to call the API |
-| `TEAMLET_AUTH` | – | `none` disables the password, only for use behind an authenticating proxy (Tailscale, Cloudflare Access) |
-| `TEAMLET_SECRET` | random, saved in data dir | Key for signing session cookies |
+| `TEAMLET_PORT` | `4317` | Port for `pnpm start` and `pnpm dev` (the desktop app picks its own) |
 
-### Security model
+## Security model
 
-- Every API call and WebSocket needs a signed, HttpOnly, `SameSite=Strict` session cookie once a password is set. After 5 failed sign-ins, that client is locked out for 1 minute.
-- Requests from other websites are rejected (origin check plus a required custom header).
-- Without a password, the server only answers requests addressed to `localhost` or `127.0.0.1`, so a website can't reach it through DNS rebinding. To use another name for it, add that origin to `TEAMLET_ALLOWED_ORIGINS`.
-- The MCP endpoint only accepts direct connections from this machine (`127.0.0.1`). Each lead gets its own random token, so it can only see and control its own workers.
-- Permission levels per session: *Read only*, *Edit files* (Claude asks you before running commands; Codex runs them in its `workspace-write` sandbox), *Full access*. You can change the level from the session header at any time. It applies to every turn that starts afterwards. Claude agents that are working switch immediately; a working Codex agent keeps its level until its turn ends.
+- The server only listens on `127.0.0.1`, so other computers can't reach it.
+- Requests from websites are rejected: the API needs a custom header and an origin of the app itself, and the server only answers requests addressed to `localhost` or `127.0.0.1`, so a page can't reach it through DNS rebinding either.
+- Each lead agent gets its own random token for the MCP endpoint, so it can only see and control its own workers.
+- The desktop window is sandboxed and can't run Node; it only gets a folder dialog and the theme setting from the app.
 
 ## How it works
 
 ```
-Browser UI ──ws/http──▶ server (Node)
+App window ──ws/http──▶ server (Node, 127.0.0.1)
                           ├─ Orchestrator: sessions, agents, worker queue, approvals
                           ├─ Provider adapters
                           │    ├─ Claude → @anthropic-ai/claude-agent-sdk using your `claude` binary
@@ -136,14 +106,13 @@ Browser UI ──ws/http──▶ server (Node)
 ```
 shared/protocol.ts          types shared by the server and UI
 server/index.ts             HTTP routes, WebSocket, static files, shutdown
-server/config.ts            environment configuration and startup safety checks
-server/auth.ts              password sign-in and signed session cookies
+server/config.ts            environment configuration
 server/orchestrator.ts      sessions, lead/worker lifecycle, parallel queue, approvals
 server/mcp.ts               delegation tools (Streamable HTTP, stateless)
-server/login.ts             runs provider sign-in (browser or device code) and streams it to the UI
+server/login.ts             runs provider sign-in and streams it to the UI
 server/providers/*.ts       Claude and Codex adapters → normalized events
-web/src/                    React UI (light/dark, mobile layout)
-desktop/                    macOS app: runs the server in an Electron utility process and opens it in a window
+web/src/                    React UI (light/dark)
+desktop/                    Electron app: runs the server in a utility process and opens it in a window
 test/                       boots the server and checks its security boundary
 ```
 
@@ -153,7 +122,7 @@ Adding another provider (Gemini CLI, OpenCode, …) means one new file in `serve
 
 - Workers share one folder. The lead is told to give each worker a separate set of files, but nothing enforces that.
 - Usage counts against your plan's normal limits. Many workers at once can hit rate limits sooner.
-- **Use your own subscription, for yourself.** Don't host this for other people on your subscription, and don't build a multi-user service on top of it without checking each provider's terms. Anthropic, for example, doesn't allow third-party products to offer claude.ai login without approval.
+- **Use your own subscription, for yourself.** Don't share Teamlet with other people on your subscription, and don't build a multi-user service on top of it without checking each provider's terms. Anthropic, for example, doesn't allow third-party products to offer claude.ai login without approval.
 
 ## Contributing
 

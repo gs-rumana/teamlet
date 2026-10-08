@@ -3,7 +3,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { ModelOption, ProviderStatus } from "../../shared/protocol.ts";
-import { childEnv, configFolder, run, shellCommand, which, withTimeout } from "../util.ts";
+import { config } from "../config.ts";
+import { childEnv, configFolder, launch, run, shellCommand, stopProcess, which, withTimeout } from "../util.ts";
 import type { ProviderAdapter, RunInput, RunResult } from "./types.ts";
 
 const CONFIG = configFolder("CODEX_HOME", join(homedir(), ".codex"));
@@ -85,10 +86,10 @@ export class CodexProvider implements ProviderAdapter {
     };
   }
 
-  loginArgs({ headless, configDir }: { headless: boolean; configDir?: string }) {
+  loginArgs({ configDir }: { configDir?: string }) {
     const binary = which("codex");
-    // The default flow redirects to a localhost callback; device codes work from any browser.
-    return binary ? { command: binary, args: headless ? ["login", "--device-auth"] : ["login"], env: CONFIG.env(configDir) } : null;
+    // Opens the browser and finishes through a localhost callback.
+    return binary ? { command: binary, args: ["login"], env: CONFIG.env(configDir) } : null;
   }
 
   async run(input: RunInput): Promise<RunResult> {
@@ -107,13 +108,21 @@ export class CodexProvider implements ProviderAdapter {
       args.push("-c", `mcp_servers.${input.mcp.name}.tool_timeout_sec=900`);
     }
     // `codex exec` has no system-prompt flag, so instructions ride along with the first turn.
-    let prompt = input.resumeId ? input.prompt : `${input.instructions}\n\n---\n\n${input.prompt}`;
-    if (prompt.startsWith("-")) prompt = ` ${prompt}`;
-    if (input.resumeId) args.push("resume", input.resumeId, prompt);
-    else args.push(prompt);
+    // The prompt goes through stdin (`-`): no argument-length limit, and nothing for Windows to mangle.
+    const prompt = input.resumeId ? input.prompt : `${input.instructions}\n\n---\n\n${input.prompt}`;
+    if (input.resumeId) args.push("resume", input.resumeId, "-");
+    else args.push("-");
 
-    const child = spawn(binary, args, { cwd: input.cwd, env: childEnv(CONFIG.env(input.configDir)), stdio: ["ignore", "pipe", "pipe"] });
-    const onAbort = () => child.kill("SIGTERM");
+    const [command, argv] = launch(binary, args);
+    const child = spawn(command, argv, {
+      cwd: input.cwd,
+      env: childEnv(CONFIG.env(input.configDir)),
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    child.stdin.on("error", () => {});
+    child.stdin.end(prompt);
+    const onAbort = () => stopProcess(child);
     input.signal.addEventListener("abort", onAbort, { once: true });
 
     let finalText = "";
@@ -189,7 +198,8 @@ interface CodexModel {
  * method of `codex app-server` (newline-delimited JSON-RPC over stdio).
  */
 export async function listCodexModels(binary: string, env: NodeJS.ProcessEnv): Promise<ModelOption[]> {
-  const child = spawn(binary, ["app-server"], { env, stdio: ["pipe", "pipe", "ignore"] });
+  const [command, args] = launch(binary, ["app-server"]);
+  const child = spawn(command, args, { env, stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
   const exited = new Promise<never>((_, reject) => {
     child.on("error", reject);
@@ -219,7 +229,7 @@ export async function listCodexModels(binary: string, env: NodeJS.ProcessEnv): P
   };
 
   try {
-    await call("initialize", { clientInfo: { name: "teamlet", version: "0.1.0" } });
+    await call("initialize", { clientInfo: { name: "teamlet", version: config.version } });
     child.stdin.write(`${JSON.stringify({ method: "initialized" })}\n`);
     const models: CodexModel[] = [];
     let cursor: string | null = null;
@@ -232,7 +242,7 @@ export async function listCodexModels(binary: string, env: NodeJS.ProcessEnv): P
       .filter((model) => !model.hidden)
       .map((model) => ({ id: model.model, label: model.displayName, description: model.description }));
   } finally {
-    child.kill();
+    stopProcess(child);
   }
 }
 

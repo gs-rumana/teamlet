@@ -1,14 +1,12 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { LoginState, ProviderId, ServerEvent } from "../shared/protocol.ts";
 import type { ProviderAdapter } from "./providers/types.ts";
-import { config } from "./config.ts";
-import { childEnv, shellCommand } from "./util.ts";
+import { childEnv, launch, shellCommand, stopProcess } from "./util.ts";
 
 const URL_PATTERN = /https?:\/\/[^\s"'<>]+/g;
 const DEVICE_CODE_PATTERN = /\b[A-Z0-9]{4}-[A-Z0-9]{4,6}\b/;
-/** The person signing in is on another machine whenever the server isn't local-only. */
-export const canOpenTerminal = config.localOnly && process.platform === "darwin";
-const headless = !config.localOnly;
+/** Opening a Terminal window to sign in is a macOS fallback. */
+export const canOpenTerminal = process.platform === "darwin";
 // eslint-disable-next-line no-control-regex
 const ANSI_PATTERN = /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07/g;
 /** Sign-ins are per account: a provider plus, for Claude, a config folder. */
@@ -38,14 +36,15 @@ export class LoginManager {
   }
 
   start(providerId: ProviderId, configDir?: string) {
-    const login = this.providers[providerId]?.loginArgs({ headless, configDir });
+    const login = this.providers[providerId]?.loginArgs({ configDir });
     if (!login) throw new Error(`${providerId} CLI is not installed`);
     const key = accountKey(providerId, configDir);
     this.cancel(providerId, configDir);
 
     const state: LoginState = { provider: providerId, configDir, running: true, output: "", urls: [] };
     this.states.set(key, state);
-    const child = spawn(login.command, login.args, { env: childEnv(login.env), stdio: "pipe" });
+    const [command, args] = launch(login.command, login.args);
+    const child = spawn(command, args, { env: childEnv(login.env), stdio: "pipe", windowsHide: true });
     this.children.set(key, child);
 
     const append = (chunk: Buffer) => {
@@ -77,14 +76,15 @@ export class LoginManager {
 
   cancel(providerId: ProviderId, configDir?: string) {
     const key = accountKey(providerId, configDir);
-    this.children.get(key)?.kill("SIGTERM");
+    const child = this.children.get(key);
+    if (child) stopProcess(child);
     this.children.delete(key);
   }
 
   /** macOS fallback: run the sign-in command in a real Terminal window. */
   openInTerminal(providerId: ProviderId, configDir?: string) {
-    if (!canOpenTerminal) throw new Error("Opening a terminal only works when Teamlet runs locally on macOS. Run the command shown instead.");
-    const login = this.providers[providerId]?.loginArgs({ headless: false, configDir });
+    if (!canOpenTerminal) throw new Error("Opening a terminal only works on macOS. Run the command shown instead.");
+    const login = this.providers[providerId]?.loginArgs({ configDir });
     if (!login) throw new Error(`${providerId} CLI is not installed`);
     const command = shellCommand([login.command, ...login.args], login.env);
     const script = `tell application "Terminal" to do script ${JSON.stringify(command)}\ntell application "Terminal" to activate`;

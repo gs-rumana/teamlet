@@ -25,7 +25,7 @@ const STATUS_TEXT: Record<AgentStatus, string> = {
 
 export const isActive = (agent: Pick<Agent, "status">) => agent.status === "running" || agent.status === "queued";
 
-export const basename = (path: string) => path.split("/").filter(Boolean).at(-1) ?? "/";
+export const basename = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? "/";
 
 /** Tells a provider's accounts apart: the signed-in email, else the config folder's name. */
 export const accountLabel = (status: ProviderStatus) => status.account ?? (status.configDir ? basename(status.configDir) : status.name);

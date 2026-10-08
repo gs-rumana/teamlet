@@ -1,4 +1,5 @@
-# Desktop app packaging: `pnpm desktop:dist` writes release/Teamlet-<version>-<arch>.dmg.
+# Desktop app packaging: `pnpm desktop:dist` writes release/Teamlet-<version>-<arch> installers
+# for the current OS (.dmg on macOS, -setup.exe on Windows, .AppImage on Linux).
 appId: dev.teamlet.app
 productName: Teamlet
 directories:
@@ -6,6 +7,7 @@ directories:
 files:
   - package.json
   - desktop/*.{ts,cjs}
+  - desktop/icon.png
   - server/**
   - shared/**
   - dist/**
@@ -17,6 +19,18 @@ mac:
   icon: desktop/icon.png
   target: dmg
 dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+win:
+  icon: desktop/icon.png
+  target: nsis
+nsis:
+  artifactName: ${productName}-${version}-${arch}-setup.${ext}
+linux:
+  icon: desktop/icon.png
+  category: Development
+  executableName: teamlet
+  target: AppImage
+appImage:
   artifactName: ${productName}-${version}-${arch}.${ext}
 electronFuses:
   # The server runs in a utility process, so the app never needs to act as plain Node.

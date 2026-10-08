@@ -56,9 +56,8 @@ export interface ProviderAdapter {
   /** Status of the account in `configDir` (the default one if unset). */
   status(configDir?: string): Promise<ProviderStatus>;
   /**
-   * argv for signing in with the user's subscription. `headless` means the
-   * browser is on another machine, so flows that redirect to localhost won't work.
+   * argv for signing in with the user's subscription.
    */
-  loginArgs(options: { headless: boolean; configDir?: string }): { command: string; args: string[]; env?: EnvOverrides } | null;
+  loginArgs(options: { configDir?: string }): { command: string; args: string[]; env?: EnvOverrides } | null;
   run(input: RunInput): Promise<RunResult>;
 }
