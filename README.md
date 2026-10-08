@@ -28,6 +28,19 @@ Locally the server only listens on `127.0.0.1`, so no password is needed.
 
 Each CLI keeps its sign-in in a config folder. Claude Code uses `~/.claude` (or `CLAUDE_CONFIG_DIR`), and Codex uses `~/.codex` (or `CODEX_HOME`). To use another account, open the provider under **Subscriptions**, click **Add another account**, and choose its folder (for example `~/.claude-work`). For a brand-new account, create an empty folder in the picker and then sign in. A new Codex folder starts without your `config.toml`, so copy it over if you want the same settings. When a provider has more than one account, the new-task form shows an **Account** picker. The lead and its workers on the same provider all run on the account you pick, and follow-up messages stay on it. Teamlet saves the list in `settings.json` in its data folder. In Docker, keep extra config folders under `/data` so they persist.
 
+## Desktop app (macOS)
+
+The same app in its own window, without a terminal or a browser tab:
+
+```bash
+pnpm desktop                # build the UI and open the app (for development)
+pnpm desktop:dist           # package release/Teamlet-<version>-<arch>.dmg
+```
+
+The desktop app starts its own server on `127.0.0.1` (port 4327 when it's free, so `pnpm dev` can run alongside) and stops it when you quit. If agents are still working, it asks first. It keeps history in the same data folder as `pnpm start` (`~/.teamlet`, or `TEAMLET_DATA_DIR`), so don't run both against one folder at the same time. When you open it from Finder or the Dock, it reads `PATH` and the rest of your login shell's environment, so agents find `node`, `git`, and the provider CLIs just as they would in a terminal. The server's output goes to `~/Library/Logs/Teamlet/server.log` (**Help → Show Server Log**).
+
+`desktop:dist` signs the app with a certificate from your keychain if it finds one. Otherwise it signs ad hoc, which is enough to run it on the Mac that built it. To share the app with others, sign it with a Developer ID and notarize it ([electron-builder docs](https://www.electron.build/docs/mac)).
+
 ## Deploy (self-hosted)
 
 Teamlet is a **single-user app you run for yourself**: on a home server, a VPS, or a dev box you reach over Tailscale. Agents run commands on the machine it's deployed to, so treat access to it like SSH access.

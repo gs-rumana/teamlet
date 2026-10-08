@@ -11,10 +11,12 @@ Teamlet: a single-user, self-hosted web app that drives the user's own signed-in
 ```bash
 pnpm install
 pnpm dev          # server (node --watch, :4317) + Vite UI with HMR (:5173, proxies /api and /ws to :4317)
-pnpm typecheck    # tsc --noEmit over server, shared, web/src
+pnpm typecheck    # tsc --noEmit over server, shared, web/src, desktop
 pnpm build        # Vite builds web/ into dist/ (the server serves dist/ when it exists)
 pnpm check        # typecheck + build; this is what CI runs
 pnpm start        # production: NODE_ENV=production node server/index.ts
+pnpm desktop      # build the UI and open the Electron app
+pnpm desktop:dist # package the macOS app into release/ (electron-builder.yml)
 ```
 
 There is no test suite and no linter. To verify a change, run `pnpm check`. CI also boots the server and polls `GET /healthz`. To reproduce that locally without touching `~/.teamlet`, run `TEAMLET_DATA_DIR=/tmp/teamlet-dev node server/index.ts`.
@@ -27,6 +29,7 @@ Node (≥ 22.18) runs `server/*.ts` directly through native type stripping. Only
 - Use erasable syntax only (`erasableSyntaxOnly`): no `enum`, no `namespace`, and no constructor parameter properties. Classes declare their fields and assign them in the constructor; follow that pattern.
 - Type-only imports must use `import type` (`verbatimModuleSyntax`).
 - The Dockerfile copies `server/` and `shared/` into the image as source, so server code can't depend on anything that needs compiling.
+- The desktop app works the same way: Electron 44's bundled Node strips types too, so `desktop/main.ts` and the server run from source, including from inside the packaged `app.asar`. The exception is `desktop/preload.cjs`: sandboxed preloads aren't loaded through Node, so it stays plain CommonJS.
 
 ## Architecture
 
@@ -50,6 +53,8 @@ web (React, ClientStore) ──ws /ws + http /api──▶ server/index.ts ─�
 - Both providers support several accounts, one per config folder (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`). An adapter opts in by implementing `defaultConfigDir()`, and `configFolder()` in `server/util.ts` builds the env for a given folder. The orchestrator then keeps one `ProviderStatus` per account: the default first, followed by the folders the user added, which are saved in `settings.json` in the data dir. Each agent stores its `configDir`, so follow-up turns resume in the same folder. Workers on the lead's provider inherit the lead's account. A CLI's built-in folder (`~/.claude`, `~/.codex`) is reached by unsetting the variable, not by pointing it at that folder. Claude needs this: with the variable set, Claude Code reads `.claude.json` from inside the folder instead of `~/.claude.json`. Codex accounts are labelled by folder name, because the app-server's `account/read` (the only source of the email) takes several seconds. Claude's plan comes from the account profile Claude Code caches in `.claude.json` (`oauthAccount.organizationType` plus the rate-limit tier, e.g. "max 5x"). `claude auth status` and the SDK's `accountInfo()` keep reporting the plan from sign-in time, so an upgrade wouldn't show there.
 
 **Delegation.** Only leads get the MCP attachment. Workers never get one, so delegation is one level deep. Each lead gets a random token, and `/mcp/<token>` only exposes tools for that lead's own workers (`workerOf` checks `parentId`). The MCP endpoint is stateless: every request builds a fresh `McpServer` and transport. It only accepts direct loopback connections (no `X-Forwarded-For`). Worker concurrency is a semaphore (`acquireWorkerSlot`, capped by `TEAMLET_MAX_PARALLEL`). Leads don't count against it. `wait_for_workers` blocks on `finishWaiters`, which runs whenever any turn ends.
+
+**Desktop app** (`desktop/main.ts`). Electron's main process forks the unchanged `server/index.ts` in a `utilityProcess`, waits for `/healthz`, and loads the server's URL in a sandboxed window. Quitting sends the server SIGTERM, which runs its usual shutdown. Electron adds nothing to the server, so don't make server code depend on Electron. A packaged app opened from Finder copies the login shell's environment first (`loginShellEnv`), because launchd's PATH lacks node and the CLIs. `serverEnv` forces loopback without a password and drops `ELECTRON_RUN_AS_NODE`, which would otherwise reach agents' commands. The preload only exposes `window.teamletDesktop.platform`. `web/src/main.tsx` copies it to `<html data-desktop>`, and the `desktop app` section of `styles.css` uses it to make room for the macOS traffic lights and to mark drag regions (`-webkit-app-region`). A new element at the top of the window, or an overlay that can cover the headers, must be added to the drag or no-drag lists there, or its buttons will move the window instead of clicking.
 
 **HTTP API** (`server/index.ts`) is a flat `routes` table matched with regexes. It has no framework. Throw `HttpError(status, msg)` to return a non-500 error. Every non-GET `/api/*` request needs an `x-teamlet: 1` header and an allowed `Origin` (CSRF protection). The web `call()` helper in `web/src/store.ts` already sends the header. `/healthz` and `/mcp/*` skip cookie auth.
 

@@ -2380,3 +2380,34 @@ input[type="password"] {
     visibility: visible;
   }
 }
+
+/* ================================================================ desktop app */
+
+/* macOS: the window has no title bar. The traffic lights sit in the sidebar's brand row,
+   and the brand row and page headers double as handles for moving the window. */
+[data-desktop="darwin"] :is(.brand, .topbar, .session-head, .drawer-head) {
+  -webkit-app-region: drag;
+}
+/* Controls inside a handle, and anything that can cover one, stay clickable. */
+[data-desktop="darwin"] :is(.brand, .topbar, .session-head, .drawer-head) :is(button, a, input, select, label),
+[data-desktop="darwin"] :is(.drawer, .drawer-scrim, .modal-backdrop, .approvals, .menu-open .topbar) {
+  -webkit-app-region: no-drag;
+}
+[data-desktop="darwin"] .brand {
+  padding-left: 74px;
+}
+[data-desktop="darwin"] .topbar {
+  height: 52px;
+  padding-left: 78px;
+}
+/* The new-task page has no header, so its top edge gets an invisible handle. */
+@media (min-width: 821px) {
+  [data-desktop="darwin"] .main:has(> .page)::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 28px;
+    pointer-events: none;
+    -webkit-app-region: drag;
+  }
+}

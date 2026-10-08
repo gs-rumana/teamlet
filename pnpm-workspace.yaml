@@ -1,0 +1,3 @@
+allowBuilds:
+  # Only used for Windows Squirrel installers, which Teamlet does not build.
+  electron-winstaller: false

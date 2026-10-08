@@ -1,0 +1,28 @@
+# Desktop app packaging: `pnpm desktop:dist` writes release/Teamlet-<version>-<arch>.dmg.
+appId: dev.teamlet.app
+productName: Teamlet
+directories:
+  output: release
+files:
+  - package.json
+  - desktop/*.{ts,cjs}
+  - server/**
+  - shared/**
+  - dist/**
+  # The Agent SDK ships its own Claude Code binary (~200 MB). Teamlet always runs the
+  # user's installed `claude`, so leave it out.
+  - "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**"
+mac:
+  category: public.app-category.developer-tools
+  icon: desktop/icon.png
+  target: dmg
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+electronFuses:
+  # The server runs in a utility process, so the app never needs to act as plain Node.
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  # Flipping fuses edits the binary; re-sign it ad hoc so an unsigned build still launches on Apple silicon.
+  resetAdHocDarwinSignature: true
