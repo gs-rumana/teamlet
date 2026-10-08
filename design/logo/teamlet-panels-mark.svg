@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Teamlet mark: Panels</title>
+  <rect x="12" y="11" width="20" height="42" rx="6" fill="currentColor"/>
+  <rect x="38" y="11" width="14" height="12" rx="4" fill="currentColor"/>
+  <rect x="38" y="26" width="14" height="12" rx="4" fill="currentColor"/>
+  <rect x="38" y="41" width="14" height="12" rx="4" fill="currentColor"/>
+</svg>

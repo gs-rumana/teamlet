@@ -1,0 +1,10 @@
+{
+  "name": "Teamlet",
+  "short_name": "Teamlet",
+  "description": "Put a team of AI agents on a task using the subscriptions you already have.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0e11",
+  "theme_color": "#111216",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

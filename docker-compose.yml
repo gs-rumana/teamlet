@@ -1,0 +1,23 @@
+# Self-host Teamlet:
+#   cp .env.example .env   # set TEAMLET_PASSWORD
+#   docker compose up -d --build
+# Then open http://<host>:4317, sign in, and connect Claude / Codex from the sidebar.
+services:
+  teamlet:
+    build: .
+    image: teamlet:latest
+    restart: unless-stopped
+    ports:
+      - "${TEAMLET_PUBLISH:-4317}:4317"
+    env_file: .env
+    environment:
+      TEAMLET_PASSWORD: ${TEAMLET_PASSWORD:?Set TEAMLET_PASSWORD in .env}
+    volumes:
+      # Session history plus the Claude / Codex sign-ins.
+      - teamlet-data:/data
+      # The projects agents work on. Point this at your code.
+      - ${TEAMLET_WORKSPACE:-./workspace}:/workspace
+    stop_grace_period: 15s
+
+volumes:
+  teamlet-data:

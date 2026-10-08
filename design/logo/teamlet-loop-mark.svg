@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Teamlet mark: Loop</title>
+  <path d="M15 32c7 0 7-16 14-16h6c7 0 7 16 14 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
+  <path d="M15 32h34" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
+  <path d="M15 32c7 0 7 16 14 16h6c7 0 7-16 14-16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
+  <path d="M7 32h8M49 32h8" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
+</svg>
