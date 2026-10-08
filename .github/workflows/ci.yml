@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The oldest supported Node (package.json engines) and the one the image and app ship.
+        # The oldest supported Node (package.json engines) and the one the desktop app and releases use.
         node: ["22.18", "24"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -67,27 +67,3 @@ jobs:
           cat "$RUNNER_TEMP/app.log" ~/Library/Logs/Teamlet/server.log || true
           exit 1
 
-  docker:
-    name: Docker image
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          load: true
-          tags: teamlet:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Container starts and reports healthy
-        run: |
-          docker run -d --name teamlet -e TEAMLET_PASSWORD=ci -p 4317:4317 teamlet:ci
-          for i in $(seq 1 60); do
-            if [ "$(docker inspect -f '{{.State.Health.Status}}' teamlet)" = healthy ]; then curl -sf http://127.0.0.1:4317/healthz; exit 0; fi
-            sleep 2
-          done
-          docker logs teamlet
-          exit 1

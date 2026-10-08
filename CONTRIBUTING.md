@@ -41,7 +41,7 @@ The tests in `test/` start the real server and check its security boundary: orig
 - Keep each pull request to one change, and explain what it does and why.
 - Add a line under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md) for anything users would notice.
 - For UI changes, include before and after screenshots (light and dark if colors change).
-- CI must pass. It typechecks, builds, and tests on Node 22 and 24, packages the macOS app, and builds the Docker image.
+- CI must pass. It typechecks, builds, and tests on Node 22 and 24, and packages the macOS app and checks that it starts.
 
 ## Releasing
 
@@ -57,6 +57,6 @@ Maintainers publish a release by pushing a version tag:
    git push origin main vx.y.z
    ```
 
-The [release workflow](.github/workflows/release.yml) first checks that the tag matches `package.json` and that `CHANGELOG.md` has a section for the version. It then builds the macOS apps (Apple silicon and Intel) and a multi-platform Docker image (pushed to `ghcr.io/gs-rumana/teamlet`), and creates a GitHub release with that changelog section as its notes. A version with a suffix, like `0.3.0-beta.1`, becomes a prerelease and doesn't move the `latest` image tag.
+The [release workflow](.github/workflows/release.yml) first checks that the tag matches `package.json` and that `CHANGELOG.md` has a section for the version. It then builds the macOS apps (Apple silicon and Intel) and creates a GitHub release with them and with that changelog section as its notes. A version with a suffix, like `0.3.0-beta.1`, becomes a prerelease.
 
 The macOS app is signed and notarized when the repository has these secrets: `MAC_CERTIFICATE` (a base64-encoded Developer ID Application `.p12`), `MAC_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`. Without them it's signed ad hoc, and the release notes explain how to open it.

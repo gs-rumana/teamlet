@@ -47,7 +47,7 @@ Locally the server only listens on `127.0.0.1`, so no password is needed. To run
 
 ### Several accounts
 
-Each CLI keeps its sign-in in a config folder. Claude Code uses `~/.claude` (or `CLAUDE_CONFIG_DIR`), and Codex uses `~/.codex` (or `CODEX_HOME`). To use another account, open the provider under **Subscriptions**, click **Add another account**, and choose its folder (for example `~/.claude-work`). For a brand-new account, create an empty folder in the picker and then sign in. A new Codex folder starts without your `config.toml`, so copy it over if you want the same settings. When a provider has more than one account, the new-task form shows an **Account** picker. The lead and its workers on the same provider all run on the account you pick, and follow-up messages stay on it. Teamlet saves the list in `settings.json` in its data folder. In Docker, keep extra config folders under `/data` so they persist.
+Each CLI keeps its sign-in in a config folder. Claude Code uses `~/.claude` (or `CLAUDE_CONFIG_DIR`), and Codex uses `~/.codex` (or `CODEX_HOME`). To use another account, open the provider under **Subscriptions**, click **Add another account**, and choose its folder (for example `~/.claude-work`). For a brand-new account, create an empty folder in the picker and then sign in. A new Codex folder starts without your `config.toml`, so copy it over if you want the same settings. When a provider has more than one account, the new-task form shows an **Account** picker. The lead and its workers on the same provider all run on the account you pick, and follow-up messages stay on it. Teamlet saves the list in `settings.json` in its data folder.
 
 ## The desktop app
 
@@ -66,26 +66,19 @@ It starts its own server on `127.0.0.1` (port 4327 when it's free, so `pnpm dev`
 
 Teamlet is a **single-user app you run for yourself**: on a home server, a VPS, or a dev box you reach over Tailscale. Agents run commands on the machine it's deployed to, so treat access to it like SSH access.
 
-### Docker Compose
-
-Each release publishes a multi-platform image (`linux/amd64`, `linux/arm64`) to `ghcr.io/gs-rumana/teamlet`. It's tagged with the version (`0.1.0`), the minor version (`0.1`), and `latest`.
+Any host with Node ≥ 22.18 and the provider CLIs works:
 
 ```bash
-cp .env.example .env        # set TEAMLET_PASSWORD, and TEAMLET_WORKSPACE to your projects folder
-docker compose up -d        # or `up -d --build` to build the image from this checkout
+pnpm install --frozen-lockfile && pnpm build
+TEAMLET_HOST=0.0.0.0 TEAMLET_PASSWORD=… pnpm start
 ```
+
+Use `TEAMLET_HOST=0.0.0.0` (all interfaces) rather than one specific IP. Agents reach the delegation tools over `127.0.0.1`. Run it under a process manager such as systemd to keep it up; it stops agents cleanly and saves history on `SIGTERM`, and answers health checks at `/healthz`.
 
 Open `http://<server>:4317`, sign in with the password, then connect Claude and/or Codex from the sidebar:
 
 - **Codex** signs in with a device code: open the link shown and enter the code.
-- **Claude** shows a sign-in link; paste the code it gives you back into the dialog. Or run `claude setup-token` on your own computer and set `CLAUDE_CODE_OAUTH_TOKEN` in `.env`.
-
-| Volume | Holds |
-| --- | --- |
-| `/data` | Session history, the session-signing secret, and the Claude / Codex sign-ins (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`) |
-| `/workspace` | The projects agents work on. Choose folders under `/workspace` in the UI |
-
-The image includes git, ripgrep, python3, and both CLIs. Pin their versions with `--build-arg CLAUDE_CODE_VERSION=… CODEX_VERSION=…`. It runs as a non-root user, has a `/healthz` health check, and stops agents cleanly on `SIGTERM`.
+- **Claude** shows a sign-in link; paste the code it gives you back into the dialog. Or run `claude setup-token` on your own computer and set `CLAUDE_CODE_OAUTH_TOKEN` in the server's environment.
 
 ### HTTPS
 
@@ -99,23 +92,12 @@ teamlet.example.com {
 
 WebSockets (`/ws`) pass through without extra configuration. Session cookies are marked `Secure` automatically when the proxy reports HTTPS.
 
-### Without Docker
-
-Any host with Node ≥ 22.18 works:
-
-```bash
-pnpm install --frozen-lockfile && pnpm build
-TEAMLET_HOST=0.0.0.0 TEAMLET_PASSWORD=… pnpm start
-```
-
-Use `TEAMLET_HOST=0.0.0.0` (all interfaces) rather than one specific IP. Agents reach the delegation tools over `127.0.0.1`.
-
 ### Configuration
 
 | Variable | Default | |
 | --- | --- | --- |
 | `TEAMLET_PASSWORD` | – | Required whenever the host isn't `127.0.0.1`/`localhost` (the server refuses to start otherwise) |
-| `TEAMLET_HOST` | `127.0.0.1` | Interface to listen on (`0.0.0.0` in Docker) |
+| `TEAMLET_HOST` | `127.0.0.1` | Interface to listen on (`0.0.0.0` for all) |
 | `TEAMLET_PORT` / `PORT` | `4317` | |
 | `TEAMLET_DATA_DIR` | `~/.teamlet` | Session history, settings, and signing secret |
 | `TEAMLET_DEFAULT_CWD` | home folder | Default working folder in the UI |
@@ -131,7 +113,7 @@ Use `TEAMLET_HOST=0.0.0.0` (all interfaces) rather than one specific IP. Agents 
 - Requests from other websites are rejected (origin check plus a required custom header).
 - Without a password, the server only answers requests addressed to `localhost` or `127.0.0.1`, so a website can't reach it through DNS rebinding. To use another name for it, add that origin to `TEAMLET_ALLOWED_ORIGINS`.
 - The MCP endpoint only accepts direct connections from this machine (`127.0.0.1`). Each lead gets its own random token, so it can only see and control its own workers.
-- Permission levels per session: *Read only*, *Edit files* (Claude asks you before running commands; Codex runs them in its `workspace-write` sandbox), *Full access*. In a container, Codex's own sandbox may not be available, so use *Full access* if Codex reports sandbox errors. The container itself is then the boundary. You can change the level from the session header at any time. It applies to every turn that starts afterwards. Claude agents that are working switch immediately; a working Codex agent keeps its level until its turn ends.
+- Permission levels per session: *Read only*, *Edit files* (Claude asks you before running commands; Codex runs them in its `workspace-write` sandbox), *Full access*. You can change the level from the session header at any time. It applies to every turn that starts afterwards. Claude agents that are working switch immediately; a working Codex agent keeps its level until its turn ends.
 
 ## How it works
 

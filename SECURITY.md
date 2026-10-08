@@ -10,7 +10,7 @@ Include what you can of:
 
 - what an attacker can do, and what they need first (network access, a malicious web page, a crafted repository, …)
 - steps to reproduce, or a proof of concept
-- the Teamlet version and how it runs (desktop app, Docker, `pnpm start`)
+- the Teamlet version and how it runs (desktop app, `pnpm start`, `pnpm dev`)
 
 This is a project maintained in spare time. You can expect an acknowledgement within a week. Once a fix is released, the advisory is published with credit to you, unless you'd rather stay anonymous.
 

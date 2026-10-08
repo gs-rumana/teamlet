@@ -20,9 +20,9 @@ pnpm desktop      # build the UI and open the Electron app
 pnpm desktop:dist # package the macOS app into release/ (electron-builder.yml)
 ```
 
-There is no linter. To verify a change, run `pnpm check`. The tests (`test/server.test.ts`, Node's built-in runner) start the real server with a throwaway `HOME` and data dir and check the origin/CSRF rules, DNS-rebinding protection, password sign-in, and the MCP endpoint. A change to that boundary needs a test there. Use `node:http` for requests with a forged `Host` header: `fetch()` always sends the real one. CI (`.github/workflows/ci.yml`) runs `pnpm check` on Node 22.18 and 24, packages the macOS app and checks that it starts its server, and builds and starts the Docker image. To run a server by hand without touching `~/.teamlet`, use `TEAMLET_DATA_DIR=/tmp/teamlet-dev node server/index.ts`.
+There is no linter. To verify a change, run `pnpm check`. The tests (`test/server.test.ts`, Node's built-in runner) start the real server with a throwaway `HOME` and data dir and check the origin/CSRF rules, DNS-rebinding protection, password sign-in, and the MCP endpoint. A change to that boundary needs a test there. Use `node:http` for requests with a forged `Host` header: `fetch()` always sends the real one. CI (`.github/workflows/ci.yml`) runs `pnpm check` on Node 22.18 and 24, and packages the macOS app and checks that it starts its server. To run a server by hand without touching `~/.teamlet`, use `TEAMLET_DATA_DIR=/tmp/teamlet-dev node server/index.ts`.
 
-Releases are cut by pushing a `vX.Y.Z` tag that matches `package.json` and has a `CHANGELOG.md` section. `.github/workflows/release.yml` then builds the DMGs and the GHCR image and publishes the GitHub release (see CONTRIBUTING.md → Releasing).
+Releases are cut by pushing a `vX.Y.Z` tag that matches `package.json` and has a `CHANGELOG.md` section. `.github/workflows/release.yml` then builds the DMGs and publishes the GitHub release (see CONTRIBUTING.md → Releasing).
 
 ## TypeScript runs without a build step on the server
 
@@ -31,7 +31,7 @@ Node (≥ 22.18) runs `server/*.ts` directly through native type stripping. Only
 - Relative imports must include the `.ts`/`.tsx` extension (`import { config } from "./config.ts"`).
 - Use erasable syntax only (`erasableSyntaxOnly`): no `enum`, no `namespace`, and no constructor parameter properties. Classes declare their fields and assign them in the constructor; follow that pattern.
 - Type-only imports must use `import type` (`verbatimModuleSyntax`).
-- The Dockerfile copies `server/` and `shared/` into the image as source, so server code can't depend on anything that needs compiling.
+- `pnpm start` runs the server from source too, so server code can't depend on anything that needs compiling.
 - The desktop app works the same way: Electron 44's bundled Node strips types too, so `desktop/main.ts` and the server run from source, including from inside the packaged `app.asar`. The exception is `desktop/preload.cjs`: sandboxed preloads aren't loaded through Node, so it stays plain CommonJS.
 
 ## Architecture

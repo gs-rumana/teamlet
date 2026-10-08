@@ -12,9 +12,6 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  IMAGE: ghcr.io/${{ github.repository }}
-
 jobs:
   verify:
     name: Verify
@@ -100,56 +97,9 @@ jobs:
           path: release/*.dmg
           if-no-files-found: error
 
-  docker:
-    name: Docker image
-    needs: verify
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-      attestations: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ${{ env.IMAGE }}
-          # 1.2.3 and 1.2; `latest` is added for releases that aren't prereleases.
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-      - id: build
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          annotations: ${{ steps.meta.outputs.annotations }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: mode=max
-          sbom: true
-      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-name: ${{ env.IMAGE }}
-          subject-digest: ${{ steps.build.outputs.digest }}
-          push-to-registry: true
-
   release:
     name: GitHub release
-    needs: [verify, desktop, docker]
+    needs: [verify, desktop]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -178,11 +128,11 @@ jobs:
             echo
             echo "### Install"
             echo
-            echo "- **macOS**: download \`Teamlet-$VERSION-arm64.dmg\` (Apple silicon) or \`Teamlet-$VERSION-x64.dmg\` (Intel) below."
+            echo "Download \`Teamlet-$VERSION-arm64.dmg\` (Apple silicon) or \`Teamlet-$VERSION-x64.dmg\` (Intel) below."
             if [ "$SIGNED" != true ]; then
-              echo "  This build isn't notarized: after copying it to Applications, run \`xattr -dr com.apple.quarantine /Applications/Teamlet.app\` once."
+              echo
+              echo "This build isn't notarized: after copying it to Applications, run \`xattr -dr com.apple.quarantine /Applications/Teamlet.app\` once."
             fi
-            echo "- **Docker**: \`docker pull $IMAGE:$VERSION\`, or see the README for Docker Compose."
           } >> notes.md
           flags=()
           [ "$PRERELEASE" = true ] && flags+=(--prerelease)

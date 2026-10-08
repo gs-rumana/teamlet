@@ -36,7 +36,6 @@ body:
       label: How do you run Teamlet?
       options:
         - Desktop app (macOS)
-        - Docker / Docker Compose
         - pnpm start
         - pnpm dev
     validations:
