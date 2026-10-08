@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # ---- build the web UI -------------------------------------------------------
-FROM node:24-slim AS build
+# Static files are the same on every platform, so build them natively when cross-building.
+FROM --platform=$BUILDPLATFORM node:24-slim AS build
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -14,7 +15,9 @@ FROM node:24-slim AS deps
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile --prod
+# The only optional packages are the Agent SDK's bundled Claude Code binaries (~200 MB).
+# Teamlet always runs the `claude` CLI installed below.
+RUN pnpm install --frozen-lockfile --prod --no-optional
 
 # ---- runtime ----------------------------------------------------------------
 FROM node:24-slim

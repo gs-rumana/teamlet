@@ -2,18 +2,39 @@
 
 # Teamlet
 
+[![CI](https://github.com/gs-rumana/teamlet/actions/workflows/ci.yml/badge.svg)](https://github.com/gs-rumana/teamlet/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/gs-rumana/teamlet?sort=semver)](https://github.com/gs-rumana/teamlet/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Use the AI subscriptions you already pay for (Claude Pro/Max, ChatGPT Plus/Pro) as a team. You give a task to a **lead agent**. It splits the work, starts **worker agents that run in parallel**, collects their reports, checks how the pieces fit together, and summarizes.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+  <img src="docs/screenshot-light.png" alt="A Teamlet session: the lead agent has split a task into three workers running in parallel on Claude and Codex.">
+</picture>
 
 The design follows [t3code](https://github.com/pingdotgg/t3code). Teamlet doesn't handle API keys or OAuth tokens itself. It drives the official CLIs that are signed in with your subscription, and a local MCP server gives the lead its delegation tools.
 
-## Quick start (local)
+## Get started
 
-Requirements: Node.js ≥ 22.18, pnpm, and at least one provider CLI:
+Teamlet needs at least one provider CLI, installed and signed in on the machine it runs on:
 
 - **Claude**: `npm i -g @anthropic-ai/claude-code`, then `claude auth login --claudeai`
 - **Codex**: `npm i -g @openai/codex`, then `codex login` ("Sign in with ChatGPT")
 
 You can also sign in from the app: click a provider under **Subscriptions** in the sidebar.
+
+### Download the desktop app (macOS)
+
+Download `Teamlet-<version>-arm64.dmg` (Apple silicon) or `-x64.dmg` (Intel) from the [latest release](https://github.com/gs-rumana/teamlet/releases/latest) and drag Teamlet to Applications. If the release notes say the build isn't notarized, run this once before opening it, or macOS will refuse to open it:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Teamlet.app
+```
+
+### From source
+
+Requirements: Node.js ≥ 22.18 and pnpm.
 
 ```bash
 pnpm install
@@ -22,22 +43,22 @@ pnpm dev                    # API on :4317, UI with hot reload on http://localho
 pnpm build && pnpm start    # everything on http://localhost:4317
 ```
 
-Locally the server only listens on `127.0.0.1`, so no password is needed.
+Locally the server only listens on `127.0.0.1`, so no password is needed. To run it on a server instead, see [Deploy](#deploy-self-hosted).
 
 ### Several accounts
 
 Each CLI keeps its sign-in in a config folder. Claude Code uses `~/.claude` (or `CLAUDE_CONFIG_DIR`), and Codex uses `~/.codex` (or `CODEX_HOME`). To use another account, open the provider under **Subscriptions**, click **Add another account**, and choose its folder (for example `~/.claude-work`). For a brand-new account, create an empty folder in the picker and then sign in. A new Codex folder starts without your `config.toml`, so copy it over if you want the same settings. When a provider has more than one account, the new-task form shows an **Account** picker. The lead and its workers on the same provider all run on the account you pick, and follow-up messages stay on it. Teamlet saves the list in `settings.json` in its data folder. In Docker, keep extra config folders under `/data` so they persist.
 
-## Desktop app (macOS)
+## The desktop app
 
-The same app in its own window, without a terminal or a browser tab:
+The desktop app is the same app in its own window, without a terminal or a browser tab. To build it from source:
 
 ```bash
 pnpm desktop                # build the UI and open the app (for development)
 pnpm desktop:dist           # package release/Teamlet-<version>-<arch>.dmg
 ```
 
-The desktop app starts its own server on `127.0.0.1` (port 4327 when it's free, so `pnpm dev` can run alongside) and stops it when you quit. If agents are still working, it asks first. It keeps history in the same data folder as `pnpm start` (`~/.teamlet`, or `TEAMLET_DATA_DIR`), so don't run both against one folder at the same time. When you open it from Finder or the Dock, it reads `PATH` and the rest of your login shell's environment, so agents find `node`, `git`, and the provider CLIs just as they would in a terminal. The server's output goes to `~/Library/Logs/Teamlet/server.log` (**Help → Show Server Log**).
+It starts its own server on `127.0.0.1` (port 4327 when it's free, so `pnpm dev` can run alongside) and stops it when you quit. If agents are still working, it asks first. It keeps history in the same data folder as `pnpm start` (`~/.teamlet`, or `TEAMLET_DATA_DIR`), so don't run both against one folder at the same time. When you open it from Finder or the Dock, it reads `PATH` and the rest of your login shell's environment, so agents find `node`, `git`, and the provider CLIs just as they would in a terminal. The server's output goes to `~/Library/Logs/Teamlet/server.log` (**Help → Show Server Log**).
 
 `desktop:dist` signs the app with a certificate from your keychain if it finds one. Otherwise it signs ad hoc, which is enough to run it on the Mac that built it. To share the app with others, sign it with a Developer ID and notarize it ([electron-builder docs](https://www.electron.build/docs/mac)).
 
@@ -47,9 +68,11 @@ Teamlet is a **single-user app you run for yourself**: on a home server, a VPS, 
 
 ### Docker Compose
 
+Each release publishes a multi-platform image (`linux/amd64`, `linux/arm64`) to `ghcr.io/gs-rumana/teamlet`. It's tagged with the version (`0.1.0`), the minor version (`0.1`), and `latest`.
+
 ```bash
 cp .env.example .env        # set TEAMLET_PASSWORD, and TEAMLET_WORKSPACE to your projects folder
-docker compose up -d --build
+docker compose up -d        # or `up -d --build` to build the image from this checkout
 ```
 
 Open `http://<server>:4317`, sign in with the password, then connect Claude and/or Codex from the sidebar:
@@ -138,6 +161,8 @@ server/mcp.ts               delegation tools (Streamable HTTP, stateless)
 server/login.ts             runs provider sign-in (browser or device code) and streams it to the UI
 server/providers/*.ts       Claude and Codex adapters → normalized events
 web/src/                    React UI (light/dark, mobile layout)
+desktop/                    macOS app: runs the server in an Electron utility process and opens it in a window
+test/                       boots the server and checks its security boundary
 ```
 
 Adding another provider (Gemini CLI, OpenCode, …) means one new file in `server/providers/` that implements `ProviderAdapter`.
@@ -147,3 +172,11 @@ Adding another provider (Gemini CLI, OpenCode, …) means one new file in `serve
 - Workers share one folder. The lead is told to give each worker a separate set of files, but nothing enforces that.
 - Usage counts against your plan's normal limits. Many workers at once can hit rate limits sooner.
 - **Use your own subscription, for yourself.** Don't host this for other people on your subscription, and don't build a multi-user service on top of it without checking each provider's terms. Anthropic, for example, doesn't allow third-party products to offer claude.ai login without approval.
+
+## Contributing
+
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers development setup, checks, and how releases are made, and [CLAUDE.md](CLAUDE.md) explains the architecture. To report a security problem, see [SECURITY.md](SECURITY.md); please don't open a public issue.
+
+## License
+
+[MIT](LICENSE)

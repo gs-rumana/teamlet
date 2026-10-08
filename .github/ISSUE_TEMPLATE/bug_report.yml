@@ -1,0 +1,55 @@
+name: Bug report
+description: Something doesn't work the way it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. **Don't report security problems here**: use [private vulnerability reporting](https://github.com/gs-rumana/teamlet/security/advisories/new) instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start a task with Claude as the lead, access "Edit files"
+        2. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Teamlet version
+      description: Shown at the bottom of the sidebar.
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run Teamlet?
+      options:
+        - Desktop app (macOS)
+        - Docker / Docker Compose
+        - pnpm start
+        - pnpm dev
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS and provider CLI versions
+      description: For example the output of `claude --version` and `codex --version`.
+      placeholder: macOS 15.5, Claude Code 2.1.0, codex 0.50.0
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Server output (the desktop app keeps it in ~/Library/Logs/Teamlet/server.log). Remove anything private first.
+      render: text

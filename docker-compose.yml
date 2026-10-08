@@ -1,11 +1,11 @@
 # Self-host Teamlet:
 #   cp .env.example .env   # set TEAMLET_PASSWORD
-#   docker compose up -d --build
+#   docker compose up -d   # pulls the released image; add --build to build this checkout instead
 # Then open http://<host>:4317, sign in, and connect Claude / Codex from the sidebar.
 services:
   teamlet:
+    image: ghcr.io/gs-rumana/teamlet:${TEAMLET_VERSION:-latest}
     build: .
-    image: teamlet:latest
     restart: unless-stopped
     ports:
       - "${TEAMLET_PUBLISH:-4317}:4317"

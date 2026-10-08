@@ -13,13 +13,16 @@ pnpm install
 pnpm dev          # server (node --watch, :4317) + Vite UI with HMR (:5173, proxies /api and /ws to :4317)
 pnpm typecheck    # tsc --noEmit over server, shared, web/src, desktop
 pnpm build        # Vite builds web/ into dist/ (the server serves dist/ when it exists)
-pnpm check        # typecheck + build; this is what CI runs
+pnpm test         # node --test: boots the server and checks its security boundary
+pnpm check        # typecheck + build + test
 pnpm start        # production: NODE_ENV=production node server/index.ts
 pnpm desktop      # build the UI and open the Electron app
 pnpm desktop:dist # package the macOS app into release/ (electron-builder.yml)
 ```
 
-There is no test suite and no linter. To verify a change, run `pnpm check`. CI also boots the server and polls `GET /healthz`. To reproduce that locally without touching `~/.teamlet`, run `TEAMLET_DATA_DIR=/tmp/teamlet-dev node server/index.ts`.
+There is no linter. To verify a change, run `pnpm check`. The tests (`test/server.test.ts`, Node's built-in runner) start the real server with a throwaway `HOME` and data dir and check the origin/CSRF rules, DNS-rebinding protection, password sign-in, and the MCP endpoint. A change to that boundary needs a test there. Use `node:http` for requests with a forged `Host` header: `fetch()` always sends the real one. CI (`.github/workflows/ci.yml`) runs `pnpm check` on Node 22.18 and 24, packages the macOS app and checks that it starts its server, and builds and starts the Docker image. To run a server by hand without touching `~/.teamlet`, use `TEAMLET_DATA_DIR=/tmp/teamlet-dev node server/index.ts`.
+
+Releases are cut by pushing a `vX.Y.Z` tag that matches `package.json` and has a `CHANGELOG.md` section. `.github/workflows/release.yml` then builds the DMGs and the GHCR image and publishes the GitHub release (see CONTRIBUTING.md → Releasing).
 
 ## TypeScript runs without a build step on the server
 

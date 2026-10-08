@@ -6,6 +6,25 @@
   "type": "module",
   "main": "desktop/main.ts",
   "description": "Use your own AI subscriptions (Claude, ChatGPT/Codex) with a lead agent that delegates to parallel sub-agents.",
+  "license": "MIT",
+  "author": "Gursahb Singh",
+  "homepage": "https://github.com/gs-rumana/teamlet#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gs-rumana/teamlet.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gs-rumana/teamlet/issues"
+  },
+  "keywords": [
+    "ai-agents",
+    "claude-code",
+    "codex",
+    "multi-agent",
+    "mcp",
+    "self-hosted",
+    "electron"
+  ],
   "packageManager": "pnpm@12.5.1",
   "engines": {
     "node": ">=22.18"
