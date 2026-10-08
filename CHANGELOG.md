@@ -4,7 +4,7 @@ All notable changes to Teamlet are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-10-08
+## [0.1.0] - 2026-10-09
 
 First public release.
 
