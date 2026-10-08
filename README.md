@@ -93,6 +93,7 @@ Use `TEAMLET_HOST=0.0.0.0` (all interfaces) rather than one specific IP. Agents 
 
 - Every API call and WebSocket needs a signed, HttpOnly, `SameSite=Strict` session cookie once a password is set. After 5 failed sign-ins, that client is locked out for 1 minute.
 - Requests from other websites are rejected (origin check plus a required custom header).
+- Without a password, the server only answers requests addressed to `localhost` or `127.0.0.1`, so a website can't reach it through DNS rebinding. To use another name for it, add that origin to `TEAMLET_ALLOWED_ORIGINS`.
 - The MCP endpoint only accepts direct connections from this machine (`127.0.0.1`). Each lead gets its own random token, so it can only see and control its own workers.
 - Permission levels per session: *Read only*, *Edit files* (Claude asks you before running commands; Codex runs them in its `workspace-write` sandbox), *Full access*. In a container, Codex's own sandbox may not be available, so use *Full access* if Codex reports sandbox errors. The container itself is then the boundary. You can change the level from the session header at any time. It applies to every turn that starts afterwards. Claude agents that are working switch immediately; a working Codex agent keeps its level until its turn ends.
 

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -10,6 +11,7 @@ const authDisabled = env.TEAMLET_AUTH === "none";
 
 /** All runtime settings, read once from the environment. */
 export const config = {
+  version: (JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")) as { version: string }).version,
   port: Number(env.TEAMLET_PORT ?? env.PORT ?? 4317),
   host,
   /** Bound only to this machine: no other device can reach the server. */

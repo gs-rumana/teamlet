@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
-import { extname, join, normalize, resolve } from "node:path";
+import { createReadStream, existsSync, statSync } from "node:fs";
+import { extname, join, normalize, resolve, sep } from "node:path";
 import { WebSocketServer } from "ws";
 import type { CreateSessionRequest, PermissionLevel, ProviderId, ServerEvent, ServerInfo } from "../shared/protocol.ts";
 import { assertSafeConfig, config } from "./config.ts";
@@ -17,9 +17,8 @@ import { expandHome } from "./util.ts";
 
 assertSafeConfig();
 
-const ROOT = resolve(import.meta.dirname, "..");
-const DIST_DIR = join(ROOT, "dist");
-const VERSION = (JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { version: string }).version;
+const DIST_DIR = resolve(import.meta.dirname, "../dist");
+const VERSION = config.version;
 
 const serverInfo: ServerInfo = {
   version: VERSION,
@@ -58,6 +57,18 @@ orchestrator.subscribe(broadcast);
 // ---------------------------------------------------------------------- http
 
 const LOOPBACK_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+
+/**
+ * Without a password, a local server would trust any page served from its own origin. A
+ * DNS-rebinding page points its own name at 127.0.0.1 and sends that name as both Host and
+ * Origin, so a local server only answers requests addressed to a loopback name.
+ */
+function isAllowedHost(req: IncomingMessage): boolean {
+  if (!config.localOnly) return true;
+  const host = req.headers.host ?? "";
+  return LOOPBACK_HOST.test(host) || config.allowedOrigins.some((origin) => URL.canParse(origin) && new URL(origin).host === host);
+}
 
 /** Only the app's own pages may call the API; other websites must not drive agents. */
 function isAllowedOrigin(req: IncomingMessage): boolean {
@@ -208,7 +219,7 @@ function serveStatic(pathname: string, res: ServerResponse) {
     return;
   }
   let file = normalize(join(DIST_DIR, decodeURIComponent(pathname)));
-  if (!file.startsWith(DIST_DIR) || !existsSync(file) || statSync(file).isDirectory()) file = join(DIST_DIR, "index.html");
+  if (!file.startsWith(DIST_DIR + sep) || !existsSync(file) || statSync(file).isDirectory()) file = join(DIST_DIR, "index.html");
   // Vite fingerprints everything under /assets, so it can be cached forever.
   const immutable = file.startsWith(join(DIST_DIR, "assets"));
   res.writeHead(200, {
@@ -223,6 +234,9 @@ function serveStatic(pathname: string, res: ServerResponse) {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
   try {
+    if (!isAllowedHost(req)) {
+      return send(res, 403, { error: "Unknown host. Open Teamlet at http://localhost, or add this address to TEAMLET_ALLOWED_ORIGINS." });
+    }
     if (url.pathname === "/healthz") {
       return send(res, 200, { ok: true, version: VERSION, providers: [...new Set(orchestrator.availableProviders().map((p) => p.id))] });
     }
@@ -269,7 +283,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.on("upgrade", (req, socket, head) => {
-  if (req.url !== "/ws" || !isAllowedOrigin(req) || !isAuthenticated(req)) {
+  if (req.url !== "/ws" || !isAllowedHost(req) || !isAllowedOrigin(req) || !isAuthenticated(req)) {
     socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
     return socket.destroy();
   }

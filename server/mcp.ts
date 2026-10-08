@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
+import { config } from "./config.ts";
 import type { Orchestrator } from "./orchestrator.ts";
 
 const MAX_WORKERS_PER_CALL = 12;
@@ -14,7 +15,7 @@ const failure = (error: unknown) => ({
 
 /** Delegation tools, scoped to the lead agent that owns the URL token. */
 function buildServer(orchestrator: Orchestrator, leadId: string): McpServer {
-  const server = new McpServer({ name: "teamlet", version: "0.1.0" });
+  const server = new McpServer({ name: "teamlet", version: config.version });
 
   server.registerTool(
     "list_providers",
